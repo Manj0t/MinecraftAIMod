@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "minecraftaimod",
+  "version": "1.0-SNAPSHOT",
+  "name": "MinecraftAIMod",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/minecraftaimod/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-datagen": [
+      "me.sand.minecraftaimod.client.MinecraftaimodDataGenerator"
+    ],
+    "client": [
+      "me.sand.minecraftaimod.client.MinecraftaimodClient"
+    ],
+    "main": [
+      "me.sand.minecraftaimod.Minecraftaimod"
+    ]
+  },
+  "mixins": [
+    "minecraftaimod.mixins.json",
+    {
+      "config": "minecraftaimod.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=0.17.3",
+    "fabric": "*",
+    "minecraft": "1.21.10"
+  }
+}

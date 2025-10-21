@@ -1,0 +1,4 @@
+/start_training EmpireCreator
+/tp Empirecreator
+/player Empirecreator move forward
+/stop_training

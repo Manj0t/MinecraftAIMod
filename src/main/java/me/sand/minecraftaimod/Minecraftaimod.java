@@ -23,6 +23,7 @@ import net.minecraft.entity.player.PlayerEquipment;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.*;
 import net.minecraft.item.equipment.ArmorMaterial;
+import net.minecraft.registry.Registries;
 import net.minecraft.registry.tag.EntityTypeTags;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.MinecraftServer;
@@ -278,8 +279,8 @@ public class Minecraftaimod implements ModInitializer {
     }
 
 
-    private String[][] getNearbyEntities(){
-        List<String[]> foundEntities = new ArrayList<>();
+    private double[][] getNearbyEntities(){
+        List<double[]> foundEntities = new ArrayList<>();
 
         Box box = agent.getBoundingBox().expand(agentSearchRadius);
         List<Entity> nearbyEntities = agent.getEntityWorld().getOtherEntities(agent, box);
@@ -287,25 +288,26 @@ public class Minecraftaimod implements ModInitializer {
         for (Entity entity : nearbyEntities) {
             if (entity instanceof PlayerEntity || !(entity instanceof LivingEntity)) continue;
 
-            String category;
-            if (entity instanceof Monster) category = "hostile";
-            else if (entity instanceof Angerable) category = "neutral";
-            else if (entity instanceof PassiveEntity) category = "passive";
-            else category = "unknown";
+            int isMonster = entity instanceof Monster ? 1 : 0;
+            int isAngerable = entity instanceof Angerable ? 1 : 0;
+            int isPassize = entity instanceof PassiveEntity ? 1 : 0;
+            int isUnknown = (isMonster != 1 && isAngerable != 1 && isPassize != 1) ? 1 : 0;
 
-            String[] entityInfo = new String[]{
-                    entity.getName().getString(),
-                    entity.getType().toString(),
-                    String.valueOf(entity.getX()),
-                    String.valueOf(entity.getY()),
-                    String.valueOf(entity.getZ()),
-                    category
+            double[] entityInfo = new double[]{
+                    Registries.ENTITY_TYPE.getRawId(entity.getType()),
+                    entity.getX(),
+                    entity.getY(),
+                    entity.getZ(),
+                    isMonster,
+                    isAngerable,
+                    isPassize,
+                    isUnknown
             };
 
             foundEntities.add(entityInfo);
         }
 
-        return foundEntities.toArray(new String[0][]);
+        return foundEntities.toArray(new double[0][]);
     }
 
     private String[][] getNearbyBlocks() {

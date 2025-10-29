@@ -4,6 +4,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.AttributeModifiersComponent;
@@ -12,19 +13,15 @@ import net.minecraft.component.type.FoodComponent;
 import net.minecraft.component.type.ToolComponent;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.attribute.EntityAttribute;
 import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.mob.Monster;
 import net.minecraft.entity.mob.Angerable;
 import net.minecraft.entity.passive.PassiveEntity;
-import net.minecraft.entity.player.PlayerEquipment;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.*;
-import net.minecraft.item.equipment.ArmorMaterial;
 import net.minecraft.registry.Registries;
-import net.minecraft.registry.tag.EntityTypeTags;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.text.Text;
@@ -36,7 +33,6 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Supplier;
 
 import static net.minecraft.server.command.CommandManager.argument;
 import static net.minecraft.server.command.CommandManager.literal;
@@ -117,8 +113,8 @@ public class Minecraftaimod implements ModInitializer {
             System.out.println(Arrays.deepToString(inventoryArray));
 
             // Get nearby entities
-//            String[][] nearbyEntities = getNearbyEntities();
-//            System.out.println(Arrays.deepToString(nearbyEntities));
+            double[][] nearbyEntities = getNearbyEntities();
+            System.out.println(Arrays.deepToString(nearbyEntities));
 
             // Get nearby Block information
 //            String[][] nearbyBlocks = getNearbyBlocks();
@@ -280,58 +276,74 @@ public class Minecraftaimod implements ModInitializer {
 
 
     private double[][] getNearbyEntities(){
-        List<double[]> foundEntities = new ArrayList<>();
+        double[][] foundEntities = new double[10][8];
 
         Box box = agent.getBoundingBox().expand(agentSearchRadius);
         List<Entity> nearbyEntities = agent.getEntityWorld().getOtherEntities(agent, box);
 
-        for (Entity entity : nearbyEntities) {
+        for (int i = 0; i < nearbyEntities.size(); i++) {
+            Entity entity = nearbyEntities.get(i);
             if (entity instanceof PlayerEntity || !(entity instanceof LivingEntity)) continue;
 
             int isMonster = entity instanceof Monster ? 1 : 0;
             int isAngerable = entity instanceof Angerable ? 1 : 0;
-            int isPassize = entity instanceof PassiveEntity ? 1 : 0;
-            int isUnknown = (isMonster != 1 && isAngerable != 1 && isPassize != 1) ? 1 : 0;
+            int isPassive = entity instanceof PassiveEntity ? 1 : 0;
+            int isUnknown = (isMonster != 1 && isAngerable != 1 && isPassive != 1) ? 1 : 0;
 
-            double[] entityInfo = new double[]{
-                    Registries.ENTITY_TYPE.getRawId(entity.getType()),
-                    entity.getX(),
-                    entity.getY(),
-                    entity.getZ(),
-                    isMonster,
-                    isAngerable,
-                    isPassize,
-                    isUnknown
-            };
-
-            foundEntities.add(entityInfo);
+            foundEntities[i][0] = Registries.ENTITY_TYPE.getRawId(entity.getType());
+            foundEntities[i][1] = entity.getX();
+            foundEntities[i][2] = entity.getY();
+            foundEntities[i][3] = entity.getZ();
+            foundEntities[i][4] = isMonster;
+            foundEntities[i][5] = isAngerable;
+            foundEntities[i][6] = isPassive;
+            foundEntities[i][7] = isUnknown;
         }
 
-        return foundEntities.toArray(new double[0][]);
+        // Runs and sets default value for no entities if less than 10 entities found
+        for(int i = nearbyEntities.size(); i < 10; i++) {
+            foundEntities[i][0] = 0;
+            foundEntities[i][1] = 0;
+            foundEntities[i][2] = 0;
+            foundEntities[i][3] = 0;
+            foundEntities[i][4] = 0;
+            foundEntities[i][5] = 0;
+            foundEntities[i][6] = 0;
+            foundEntities[i][7] = 0;
+        }
+
+        return foundEntities;
     }
 
-    private String[][] getNearbyBlocks() {
-        List<String[]> foundBlocks = new ArrayList<>();
+    private double[][] getNearbyBlocks() {
+        List<double[]> foundBlocks = new ArrayList<>();
 
         // incase I ever want to change it
         // Definetly need to change
-        int radius = (int) agentSearchRadius;
+        int radius = 5;
 
         // Vertical space not as significant
         int verticalRadius = 3;
 
-        for(int x = agent.getBlockX() - radius; x <= agent.getBlockX() + radius; x++) {
-            for (int y = agent.getBlockY() - verticalRadius; y <= agent.getBlockY() + verticalRadius; y++) {
-                for(int z = agent.getBlockZ() - radius; z <= agent.getBlockZ() + radius; z++) {
+        int agentBlockX = agent.getBlockX();
+        int agentBlockY = agent.getBlockY();
+        int agentBlockZ = agent.getBlockZ();
+
+        for(int x = agent.getBlockX() - radius; x <= agentBlockX + radius; x++) {
+            for (int y = agent.getBlockY() - verticalRadius; y <= agentBlockY + verticalRadius; y++) {
+                for(int z = agent.getBlockZ() - radius; z <= agentBlockZ + radius; z++) {
                     BlockPos pos = new BlockPos(x, y, z);
                     BlockState state = agent.getEntityWorld().getBlockState(pos);
 
+                    int relativeBlockX = x -  agentBlockX;
+                    int relativeBlockY = y - agentBlockY;;
+                    int relativeBlockZ = z - agentBlockZ;
 
-                    String[] blockInfo = new String[]{
-                            state.getBlock().toString(),
-                            String.valueOf(x),
-                            String.valueOf(y),
-                            String.valueOf(z)
+                    double[] blockInfo = new double[]{
+                            Block.STATE_IDS.getRawId(state),
+                            relativeBlockX,
+                            relativeBlockY,
+                            relativeBlockZ
                     };
 
                     foundBlocks.add(blockInfo);

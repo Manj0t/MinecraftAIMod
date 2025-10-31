@@ -14,6 +14,8 @@ import net.minecraft.component.type.ToolComponent;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.attribute.EntityAttributes;
+import net.minecraft.entity.effect.StatusEffect;
+import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.mob.Monster;
@@ -27,11 +29,14 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 
 import static net.minecraft.server.command.CommandManager.argument;
@@ -47,8 +52,7 @@ public class Minecraftaimod implements ModInitializer {
     private String agentName = null;
 
     private PlayerInventory agentInventory = null;
-
-    private double agentSearchRadius = 10.0;
+    World world = null;
 
 
 
@@ -96,17 +100,16 @@ public class Minecraftaimod implements ModInitializer {
                 for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
                     if (agentName.equals(player.getName().getString().toLowerCase())) {
                         agent = player;
+                        world = agent.getEntityWorld();
                         System.out.println("found");
                         break;
                     }
                 }
                 if (agent == null) return;
             }
-
             // Agent Position Information
-            double[] agentPos = getPos();
-            System.out.println(agentName + " @ " + " X: " + agentPos[0] + " Y: " + agentPos[1] + " Z: " + agentPos[2]);
-
+            double[] agentInfo = getAgentInfo();
+            System.out.println(Arrays.toString(agentInfo));
             // Get agent inventory
             // Pass through transformer to encode values as a flattened vector
             double[][] inventoryArray = getInventory();
@@ -117,14 +120,72 @@ public class Minecraftaimod implements ModInitializer {
             System.out.println(Arrays.deepToString(nearbyEntities));
 
             // Get nearby Block information
-//            String[][] nearbyBlocks = getNearbyBlocks();
-//            System.out.println(Arrays.deepToString(nearbyBlocks));
+            double[][] nearbyBlocks = getNearbyBlocks();
+            System.out.println(Arrays.deepToString(nearbyBlocks));
 
         });
     }
 
+    private double[] getAgentInfo(){
+        double health = agent.getHealth();
+        double hunger = agent.getHungerManager().getFoodLevel();
+        double saturation = agent.getHungerManager().getSaturationLevel();
+
+        double[] agentPos = getPos();
+
+        Vec3d vel = agent.getVelocity();
+        double vx = vel.x;
+        double vy = vel.y;
+        double vz = vel.z;
+
+        BlockState blockBelow = world.getBlockState(agent.getBlockPos().down());
+        double blockBelowId = Block.STATE_IDS.getRawId(blockBelow);
+
+        double colliding = agent.horizontalCollision || agent.verticalCollision ? 1 : 0;
+        double isSneak = agent.isSneaking() ? 1 : 0;
+
+        double isOnFire = agent.isOnFire() ? 1 : 0;
+        double inWater = agent.isTouchingWater() ? 1 : 0;
+        double inLava = agent.isInLava() ? 1 : 0;
+        double onGround = agent.isOnGround() ? 1 : 0;
+        double isFalling  = vy < -0.6 ? 1 : 0;
+        double wasHurt = agent.hurtTime > 0 ? 1 : 0;
+
+        double mainHandCount = agent.getMainHandStack().getCount();
+        double mainHandSlot = agent.getInventory().getSelectedSlot();
+
+        double time = (double) world.getTime();
+        double lightLevel = world.getLightLevel(agent.getBlockPos());
+
+        double[] agentInfo = new double[]{
+                health,
+                hunger,
+                saturation,
+                agentPos[0],
+                agentPos[1],
+                agentPos[2],
+                vx,
+                vy,
+                vz,
+                blockBelowId,
+                colliding,
+                isSneak,
+                isOnFire,
+                inWater,
+                inLava,
+                onGround,
+                isFalling,
+                wasHurt,
+                mainHandCount,
+                mainHandSlot,
+                time,
+                lightLevel,
+        };
+
+        return agentInfo;
+    }
     private double[] getPos() {
-        return new double[]{ agent.getX(), agent.getY(), agent.getZ() };
+        return new double[]{ agent.getX(), agent.getY(), agent.getZ(), agent.getYaw(), agent.getPitch() };
     }
 
     /**
@@ -274,8 +335,13 @@ public class Minecraftaimod implements ModInitializer {
         return inventoryArray;
     }
 
-
+    /**
+     * Gets Entities within a given radius of the agent
+     * @return double[][] where each row =
+     *         [entity id, x, y, z, isMonster, isAngerable, isPassive, isUnknown]
+     */
     private double[][] getNearbyEntities(){
+        double agentSearchRadius = 10.0;
         double[][] foundEntities = new double[10][8];
 
         Box box = agent.getBoundingBox().expand(agentSearchRadius);
@@ -291,9 +357,9 @@ public class Minecraftaimod implements ModInitializer {
             int isUnknown = (isMonster != 1 && isAngerable != 1 && isPassive != 1) ? 1 : 0;
 
             foundEntities[i][0] = Registries.ENTITY_TYPE.getRawId(entity.getType());
-            foundEntities[i][1] = entity.getX();
-            foundEntities[i][2] = entity.getY();
-            foundEntities[i][3] = entity.getZ();
+            foundEntities[i][1] = entity.getX() - agent.getX();
+            foundEntities[i][2] = entity.getY() - agent.getY();
+            foundEntities[i][3] = entity.getZ() - agent.getZ();
             foundEntities[i][4] = isMonster;
             foundEntities[i][5] = isAngerable;
             foundEntities[i][6] = isPassive;
@@ -315,20 +381,23 @@ public class Minecraftaimod implements ModInitializer {
         return foundEntities;
     }
 
+    /**
+     * Gets nearby blocks of the agent given a radius
+     * @return double[][] where each row =
+     *         [Block id, x, y, z]
+     */
     private double[][] getNearbyBlocks() {
-        List<double[]> foundBlocks = new ArrayList<>();
-
-        // incase I ever want to change it
-        // Definetly need to change
         int radius = 5;
+        int verticalRadius = 3; // Vertical space not as significant
 
-        // Vertical space not as significant
-        int verticalRadius = 3;
+        int rows = ( (radius * 2) + 1) * ( (verticalRadius * 2) + 1) * ( (radius * 2) + 1 );
+        double[][] foundBlocks = new double[rows][4];
 
         int agentBlockX = agent.getBlockX();
         int agentBlockY = agent.getBlockY();
         int agentBlockZ = agent.getBlockZ();
 
+        int idx = 0;
         for(int x = agent.getBlockX() - radius; x <= agentBlockX + radius; x++) {
             for (int y = agent.getBlockY() - verticalRadius; y <= agentBlockY + verticalRadius; y++) {
                 for(int z = agent.getBlockZ() - radius; z <= agentBlockZ + radius; z++) {
@@ -339,18 +408,15 @@ public class Minecraftaimod implements ModInitializer {
                     int relativeBlockY = y - agentBlockY;;
                     int relativeBlockZ = z - agentBlockZ;
 
-                    double[] blockInfo = new double[]{
-                            Block.STATE_IDS.getRawId(state),
-                            relativeBlockX,
-                            relativeBlockY,
-                            relativeBlockZ
-                    };
+                    foundBlocks[idx][0] = Block.STATE_IDS.getRawId(state);
+                    foundBlocks[idx][1] = relativeBlockX;
+                    foundBlocks[idx][2] = relativeBlockY;
+                    foundBlocks[idx][3] = relativeBlockZ;
 
-                    foundBlocks.add(blockInfo);
+                    idx++;
                 }
             }
         }
-
-        return foundBlocks.toArray(new String[0][]);
+        return foundBlocks;
     }
 }

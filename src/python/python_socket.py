@@ -2,10 +2,12 @@ import socket
 import struct
 
 from PPOTrainer import PPOTrainer
-from utils import set_conn
+from utils import set_conn, rollout
 import state_pb2
 from ActorCritic import *
 import torch
+
+import numpy as np
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -22,14 +24,49 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
     set_conn(conn)
 
-    data = conn.recv(4 * 4)
-    struct.unpack(f">{4}i", data)
-    agent_info_dim, num_items, num_blocks, num_entities = data
+    expected = 4 * 4  # 16 bytes
+    buffer = b""
+    while len(buffer) < expected:
+        chunk = conn.recv(expected - len(buffer))
+        if not chunk:
+            raise ConnectionError("Socket closed before receiving full header")
+        buffer += chunk
+
+    # ✅ Now unpack correctly
+    agent_info_dim, num_items, num_blocks, num_entities = struct.unpack(">4i", buffer)
+
+
+    print('agent_info_dim: ', agent_info_dim)
+    print('num_items: ', num_items)
+    print('num_blocks: ', num_blocks)
+    print('num_entities: ' ,num_entities)
 
     model = ActorCriticNetwork(agent_info_dim, num_items, num_blocks, num_entities)
     model.to(DEVICE)
 
     ppo = PPOTrainer(model)
+
+    while True:
+        train_data, ep_reward = rollout(model)
+
+        permute_idxs = np.random.permutation(len(train_data['obs']))
+
+        obs = train_data['obs'][permute_idxs]
+
+        act = {
+            'movement'  : torch.tensor(train_data['movement'][permute_idxs], dtype=torch.long, device=DEVICE),
+            'jump'      : torch.tensor(train_data['jump'][permute_idxs], dtype=torch.long, device=DEVICE),
+            'item_use'  : torch.tensor(train_data['item_use'][permute_idxs], dtype=torch.long, device=DEVICE),
+            'hotbar'   : torch.tensor(train_data['hotbar'][permute_idxs], dtype=torch.long, device=DEVICE)
+        }
+
+        advantages = torch.tensor(train_data['advantage'][permute_idxs], dtype=torch.float32, device=DEVICE)
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        log_probs = torch.tensor(train_data['log_prob'][permute_idxs], dtype=torch.float32, device=DEVICE)
+        returns = torch.tensor(train_data['returns'][permute_idxs], dtype=torch.float32, device=DEVICE)
+
+        ppo.train_policy(obs, act, log_probs, advantages)
+        ppo.train_value(obs, returns)
 
 
 

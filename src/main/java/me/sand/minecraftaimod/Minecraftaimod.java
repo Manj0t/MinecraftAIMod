@@ -69,6 +69,8 @@ public class Minecraftaimod implements ModInitializer {
     DataInputStream input = null;
     DataOutputStream output = null;
 
+    boolean waitingForAction = false;
+
     @Override
     public void onInitialize() {
 
@@ -100,10 +102,17 @@ public class Minecraftaimod implements ModInitializer {
                                             output = new DataOutputStream(socket.getOutputStream());
                                             System.out.println("INFO: Socket Connected");
 
-                                            int numBlocks = Registries.BLOCK.size();
+                                            int agent_info_dim = 28;
                                             int numItems = Registries.ITEM.size();
+                                            int numBlocks = Registries.BLOCK.size();
                                             int numEntities = Registries.ENTITY_TYPE.size();
 
+
+                                            output.writeInt(agent_info_dim);
+                                            output.writeInt(numItems);
+                                            output.writeInt(numBlocks);
+                                            output.writeInt(numEntities);
+                                            output.flush();
 
 //                                            out.println("exit");
 //                                            System.out.println("Python replied: " + in.readLine());
@@ -121,6 +130,9 @@ public class Minecraftaimod implements ModInitializer {
             dispatcher.register(literal("stop_training").executes(ctx -> {
                 MinecraftServer server = ctx.getSource().getServer();
 
+                server.getCommandManager().parseAndExecute(server.getCommandSource(), "/player " + agentName + " kill");
+
+                waitingForAction = false;
                 agent = null;
                 agentName = null;
 
@@ -136,8 +148,6 @@ public class Minecraftaimod implements ModInitializer {
                     }
 
                 }
-
-                server.getCommandManager().parseAndExecute(server.getCommandSource(), "/player " + agentName + " kill");
 
                 ctx.getSource().sendFeedback(() -> Text.literal("Stopped training!"), false);
                 return 1;
@@ -178,73 +188,14 @@ public class Minecraftaimod implements ModInitializer {
                 if (agent == null) return;
             }
             // Agent Position Information
-            double[] agentInfo = getAgentInfo();
-            System.out.println(Arrays.toString(agentInfo));
-            // Get agent inventory
-            // Pass through transformer to encode values as a flattened vector
-            double[][] inventoryArray = getInventory();
-            System.out.println(Arrays.deepToString(inventoryArray));
 
-            // Get nearby entities
-            double[][] nearbyEntities = getNearbyEntities();
-            System.out.println(Arrays.deepToString(nearbyEntities));
-
-            // Get nearby Block information
-            double[][] nearbyBlocks = getNearbyBlocks();
-            System.out.println(Arrays.deepToString(nearbyBlocks));
-
-
-            // prolly could hard code this into the function?
-            List<Double> agentInfoList = new ArrayList<>(agentInfo.length);
-            for (double value : agentInfo) {
-                agentInfoList.add(value);
+            if(!waitingForAction){
+                sendStateInfo(server);
+                waitingForAction = true;
+                return;
             }
 
-            Matrix.Builder inventoryMatrix = Matrix.newBuilder();
-            for(double[] row : inventoryArray) {
-                Row.Builder rowBuilder = Row.newBuilder();
-                for(double value : row) {
-                    rowBuilder.addValues(value);
-                }
-                inventoryMatrix.addRows(rowBuilder);
-            }
-
-            Matrix.Builder nearbyEntitiesMatrix = Matrix.newBuilder();
-            for(double[] row : nearbyEntities) {
-                Row.Builder rowBuilder = Row.newBuilder();
-                for(double value : row) {
-                    rowBuilder.addValues(value);
-                }
-                nearbyEntitiesMatrix.addRows(rowBuilder);
-            }
-
-            Matrix.Builder nearbyBlocksMatrix = Matrix.newBuilder();
-            for(double[] row : nearbyBlocks) {
-                Row.Builder rowBuilder = Row.newBuilder();
-                for(double value : row) {
-                    rowBuilder.addValues(value);
-                }
-                nearbyBlocksMatrix.addRows(rowBuilder);
-            }
-
-            State stateInfo = State.newBuilder()
-                    .addAllAgentInfo(agentInfoList)
-                    .setInventory(inventoryMatrix)
-                    .setNearbyEntities(nearbyEntitiesMatrix)
-                    .setNearbyBlocks(nearbyBlocksMatrix)
-                    .build();
-
-            try {
-                byte[] payload = stateInfo.toByteArray();
-                output.writeInt(payload.length);
-                output.write(payload);
-                output.flush();
-            } catch (IOException e) {
-                e.printStackTrace();
-                server.getCommandManager().parseAndExecute(server.getCommandSource(), "/stop_training");
-                System.out.println("Failed to send data to python, shutting down training...");
-            }
-
+//            Recieve action
             try{
                 int respLen = input.readInt();
                 byte[] resp = input.readNBytes(respLen);
@@ -257,16 +208,105 @@ public class Minecraftaimod implements ModInitializer {
                 System.out.println("LEN: " + actionLen);
                 System.out.println(Arrays.deepToString(actions.toArray()));
 
+                float reward = 5f;
+                output.writeFloat(reward);
+                output.writeInt(0);
+                output.flush();
 
+                // Move on yet or no?
+                input.readInt();
+
+                waitingForAction = false;
             }catch(SocketTimeoutException ignored) {
 
             }
             catch (IOException e) {
+                System.out.println("ERROR: FAILED");
                 server.getCommandManager().parseAndExecute(server.getCommandSource(), "/stop_training");
             }
 
+//            try{
+//                int reward = 5;
+//                output.writeInt(reward);
+//                output.flush();
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
+
         });
+        
     }
+
+    private void sendStateInfo(MinecraftServer server){
+        double[] agentInfo = getAgentInfo();
+//            System.out.println(Arrays.toString(agentInfo));
+        // Get agent inventory
+        // Pass through transformer to encode values as a flattened vector
+        double[][] inventoryArray = getInventory();
+//            System.out.println(Arrays.deepToString(inventoryArray));
+
+        // Get nearby entities
+        double[][] nearbyEntities = getNearbyEntities();
+//            System.out.println(Arrays.deepToString(nearbyEntities));
+
+        // Get nearby Block information
+        double[][] nearbyBlocks = getNearbyBlocks();
+//            System.out.println(Arrays.deepToString(nearbyBlocks));
+        System.out.println("Sending Info now");
+
+
+        // prolly could hard code this into the function?
+        List<Double> agentInfoList = new ArrayList<>(agentInfo.length);
+        for (double value : agentInfo) {
+            agentInfoList.add(value);
+        }
+
+        Matrix.Builder inventoryMatrix = Matrix.newBuilder();
+        for(double[] row : inventoryArray) {
+            Row.Builder rowBuilder = Row.newBuilder();
+            for(double value : row) {
+                rowBuilder.addValues(value);
+            }
+            inventoryMatrix.addRows(rowBuilder);
+        }
+
+        Matrix.Builder nearbyEntitiesMatrix = Matrix.newBuilder();
+        for(double[] row : nearbyEntities) {
+            Row.Builder rowBuilder = Row.newBuilder();
+            for(double value : row) {
+                rowBuilder.addValues(value);
+            }
+            nearbyEntitiesMatrix.addRows(rowBuilder);
+        }
+
+        Matrix.Builder nearbyBlocksMatrix = Matrix.newBuilder();
+        for(double[] row : nearbyBlocks) {
+            Row.Builder rowBuilder = Row.newBuilder();
+            for(double value : row) {
+                rowBuilder.addValues(value);
+            }
+            nearbyBlocksMatrix.addRows(rowBuilder);
+        }
+
+        State stateInfo = State.newBuilder()
+                .addAllAgentInfo(agentInfoList)
+                .setInventory(inventoryMatrix)
+                .setNearbyEntities(nearbyEntitiesMatrix)
+                .setNearbyBlocks(nearbyBlocksMatrix)
+                .build();
+
+        try {
+            byte[] payload = stateInfo.toByteArray();
+            output.writeInt(payload.length);
+            output.write(payload);
+            output.flush();
+        } catch (IOException e) {
+            e.printStackTrace();
+            server.getCommandManager().parseAndExecute(server.getCommandSource(), "/stop_training");
+            System.out.println("Failed to send data to python, shutting down training...");
+        }
+    }
+
 
     private double[] getAgentInfo(){
         double health = agent.getHealth();

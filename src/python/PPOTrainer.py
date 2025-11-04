@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from torch import optim
-from torch.distribution import Categorical, Bernoulli
+from torch.distributions import Categorical, Bernoulli
 
 class PPOTrainer():
     def __init__(self, actor_critic, ppo_clip_val=0.2, target_kl_div=0.01, max_policy_train_iters=80, value_train_iters=80, policy_lr=3e-4, value_lr=1e-3,):
@@ -11,9 +11,9 @@ class PPOTrainer():
         self.max_policy_train_iters = max_policy_train_iters
         self.value_train_iters = value_train_iters
 
-        shared_params = list(self.ac.shared.parameters())
-        value_params = shared_params + list(self.ac.value.parameters())
-        policy_params = list(self.ac.shared_layers.parameters()) + \
+        shared_params = list(self.ac.shared_layers.parameters())
+        value_params = shared_params + list(self.ac.value_layer.parameters())
+        policy_params = shared_params + \
                 list(self.ac.movement_policy.parameters()) + \
                 list(self.ac.jump_policy.parameters()) + \
                 list(self.ac.item_use_policy.parameters()) + \
@@ -30,7 +30,7 @@ class PPOTrainer():
             logits_dict = self.ac.policy(obs)
 
             movement_dist = Categorical(logits_dict['movement'])
-            jump_dist = Bernoulli(logits_dict['jump'])
+            jump_dist = Bernoulli(logits_dict['jump'].squeeze(-1))
             item_use_dist = Categorical(logits_dict['item_use'])
             hotbar_dist = Categorical(logits_dict['hotbar'])
 

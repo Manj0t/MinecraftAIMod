@@ -83,9 +83,13 @@ def take_step(action):
 
     conn.sendall(struct.pack(">i", len(out)))
     conn.sendall(out)
+    print('Sent action')
 
     reward = struct.unpack(">f", conn.recv(4))[0]
+    print('Rewards recieved: ', reward)
     done = struct.unpack(">i", conn.recv(4))[0]
+    print('Done recieved: ', done)
+    conn.sendall(struct.pack(">i", 1))
     obs = get_state()
 
     return obs, float(reward), int(done)
@@ -126,10 +130,10 @@ def rollout(model, max_steps=2048):
     for _ in range(max_steps):
         logits_dict, value = model(obs)
 
-        movement_dist = Categorical(logits_dict['movement'])
-        jump_dist = Bernoulli(logits_dict['jump'])
-        item_use_dist = Categorical(logits_dict['item_use'])
-        hotbar_dist = Categorical(logits_dict['hotbar'])
+        movement_dist = Categorical(logits=logits_dict['movement'])
+        jump_dist = Bernoulli(logits=logits_dict['jump'])
+        item_use_dist = Categorical(logits=logits_dict['item_use'])
+        hotbar_dist = Categorical(logits=logits_dict['hotbar'])
 
         movement_act = movement_dist.sample()
         jump_act = jump_dist.sample()

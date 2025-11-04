@@ -1,6 +1,8 @@
 plugins {
     id 'fabric-loom' version '1.11-SNAPSHOT'
     id 'maven-publish'
+
+    id 'com.google.protobuf' version '0.9.5'
 }
 
 version = project.mod_version
@@ -28,6 +30,7 @@ fabricApi {
 }
 
 repositories {
+    mavenCentral()
     maven {
         url = "https://maven.fabricmc.net/"
     }
@@ -48,7 +51,7 @@ dependencies {
 
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
-
+    implementation 'com.google.protobuf:protobuf-java:3.21.12' // Match the protoc version
     // Fabric API
 //    modImplementation "net.fabricmc.fabric-api:fabric-api:1.21.1"
 
@@ -115,3 +118,25 @@ publishing {
         // retrieving dependencies.
     }
 }
+
+//protobuf {
+//    protoc {
+//        artifcat = 'com.google.protobuf:protoc:3.21.1'
+//    }
+//    generateProtoTasks {
+//        all().each { task ->
+//            task.builtins {
+//                java {
+//                    option 'lite'
+//                }
+//            }
+//        }
+//        sourceSets {
+//            main {
+//                proto {
+//                    srcDir 'state.proto'
+//                }
+//            }
+//        }
+//    }
+//}

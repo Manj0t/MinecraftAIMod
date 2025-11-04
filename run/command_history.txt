@@ -1,4 +1,50 @@
-/start_training EmpireCreator
-/tp Empirecreator
-/player Empirecreator move forward
+/time set day
+/start_training Empirecreator
 /stop_training
+/start_training Empirecreator
+/stop_training
+/start_training Empirecreator
+/stop_training
+/start_training Empirecreator
+/stop_training
+/start_training Empirecreator
+/stop_training
+/start_training Empirecreator
+/stop_training
+/start_training Empirecreator
+/stop_training
+/start_training Empirecreator
+/stop_training
+/start_training Empirecreator
+/stop_training
+/start_training Empirecreator
+/stop_training
+/start_training Empirecreator
+/stop_training
+/start_training Empirecreator
+/stop_training
+/start_training Empirecreator
+/stop_training
+/start_training Empirecreator
+/stop_training
+/start_training Empirecreator
+/stop_training
+/start_training Empirecreator
+/stop_training
+/start_training Empirecreator
+/close_socket
+/start_training Empirecreator
+/close_socket
+/stop_training
+/start_training Empirecreator
+/stop_training
+/start_training Empirecreator
+/stop_training
+/start_training Empirecreator
+/tp Empirecreator
+/stop_training
+/kill Empirecreator
+/stop_training
+/start_training Empirecreator
+/tp Empirecreator
+/start_training Empirecreator

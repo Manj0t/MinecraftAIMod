@@ -1,6 +1,7 @@
 package me.sand.minecraftaimod;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
+import me.sand.minecraftaimod.protobuf.StateOuterClass;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -14,8 +15,6 @@ import net.minecraft.component.type.ToolComponent;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.attribute.EntityAttributes;
-import net.minecraft.entity.effect.StatusEffect;
-import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.mob.Monster;
@@ -27,6 +26,9 @@ import net.minecraft.registry.Registries;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.text.Text;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.EntityHitResult;
+import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
@@ -34,13 +36,21 @@ import net.minecraft.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.*;
+import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
 
 import static net.minecraft.server.command.CommandManager.argument;
 import static net.minecraft.server.command.CommandManager.literal;
+
+
+import me.sand.minecraftaimod.protobuf.State;
+import me.sand.minecraftaimod.protobuf.Matrix;
+import me.sand.minecraftaimod.protobuf.Row;
+import me.sand.minecraftaimod.protobuf.Action;
 
 
 public class Minecraftaimod implements ModInitializer {
@@ -55,6 +65,9 @@ public class Minecraftaimod implements ModInitializer {
     World world = null;
 
 
+    Socket socket = null;
+    DataInputStream input = null;
+    DataOutputStream output = null;
 
     @Override
     public void onInitialize() {
@@ -72,18 +85,74 @@ public class Minecraftaimod implements ModInitializer {
                                         collecting = true;
                                         ctx.getSource().sendFeedback(() -> Text.literal("Started training!"), false);
 
+                                        try {
+//                                            ProcessBuilder pb = new ProcessBuilder("python3", "python_socket.py");
+                                            System.out.println("INFO: Made process");
+//                                            pb.start();
+//                                            System.out.println("INFO: Started Process");
+//                                            Thread.sleep(1000);
+//                                            System.out.println("INFO: FINISHED SLEEPING");
+
+                                            socket = new Socket("localhost", 5000);
+                                            socket.setSoTimeout(5);
+
+                                            input = new DataInputStream(socket.getInputStream());
+                                            output = new DataOutputStream(socket.getOutputStream());
+                                            System.out.println("INFO: Socket Connected");
+
+                                            int numBlocks = Registries.BLOCK.size();
+                                            int numItems = Registries.ITEM.size();
+                                            int numEntities = Registries.ENTITY_TYPE.size();
+
+
+//                                            out.println("exit");
+//                                            System.out.println("Python replied: " + in.readLine());
+
+//                                            socket.close();
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
+                                            System.out.println("ERROR: FAILED ");
+                                        }
+                                        System.out.println("Success? ");
                                         return 1;
-                                    })));
+            })));
+
 
             dispatcher.register(literal("stop_training").executes(ctx -> {
                 MinecraftServer server = ctx.getSource().getServer();
-                server.getCommandManager().parseAndExecute(server.getCommandSource(), "/player " + agentName + " kill");
 
                 agent = null;
                 agentName = null;
 
                 collecting = false;
+
+                if(socket != null && !socket.isClosed()) {
+                    try {
+                        socket.close();
+                        socket = null;
+                    }
+                    catch (IOException e) {
+                        // ignore?
+                    }
+
+                }
+
+                server.getCommandManager().parseAndExecute(server.getCommandSource(), "/player " + agentName + " kill");
+
                 ctx.getSource().sendFeedback(() -> Text.literal("Stopped training!"), false);
+                return 1;
+            }));
+
+            dispatcher.register(literal("close_socket").executes(ctx -> {
+                if (socket != null && !socket.isClosed()) {
+                    try {
+                        socket.close();
+                        socket = null;
+                    } catch (IOException e) {
+                        //ignore already closed, shouldn't ever really hit this
+                    }
+
+                }
                 return 1;
             }));
         });
@@ -101,6 +170,7 @@ public class Minecraftaimod implements ModInitializer {
                     if (agentName.equals(player.getName().getString().toLowerCase())) {
                         agent = player;
                         world = agent.getEntityWorld();
+                        server.getCommandManager().parseAndExecute(server.getCommandSource(), "/gamemode survival " + agentName);
                         System.out.println("found");
                         break;
                     }
@@ -122,6 +192,78 @@ public class Minecraftaimod implements ModInitializer {
             // Get nearby Block information
             double[][] nearbyBlocks = getNearbyBlocks();
             System.out.println(Arrays.deepToString(nearbyBlocks));
+
+
+            // prolly could hard code this into the function?
+            List<Double> agentInfoList = new ArrayList<>(agentInfo.length);
+            for (double value : agentInfo) {
+                agentInfoList.add(value);
+            }
+
+            Matrix.Builder inventoryMatrix = Matrix.newBuilder();
+            for(double[] row : inventoryArray) {
+                Row.Builder rowBuilder = Row.newBuilder();
+                for(double value : row) {
+                    rowBuilder.addValues(value);
+                }
+                inventoryMatrix.addRows(rowBuilder);
+            }
+
+            Matrix.Builder nearbyEntitiesMatrix = Matrix.newBuilder();
+            for(double[] row : nearbyEntities) {
+                Row.Builder rowBuilder = Row.newBuilder();
+                for(double value : row) {
+                    rowBuilder.addValues(value);
+                }
+                nearbyEntitiesMatrix.addRows(rowBuilder);
+            }
+
+            Matrix.Builder nearbyBlocksMatrix = Matrix.newBuilder();
+            for(double[] row : nearbyBlocks) {
+                Row.Builder rowBuilder = Row.newBuilder();
+                for(double value : row) {
+                    rowBuilder.addValues(value);
+                }
+                nearbyBlocksMatrix.addRows(rowBuilder);
+            }
+
+            State stateInfo = State.newBuilder()
+                    .addAllAgentInfo(agentInfoList)
+                    .setInventory(inventoryMatrix)
+                    .setNearbyEntities(nearbyEntitiesMatrix)
+                    .setNearbyBlocks(nearbyBlocksMatrix)
+                    .build();
+
+            try {
+                byte[] payload = stateInfo.toByteArray();
+                output.writeInt(payload.length);
+                output.write(payload);
+                output.flush();
+            } catch (IOException e) {
+                e.printStackTrace();
+                server.getCommandManager().parseAndExecute(server.getCommandSource(), "/stop_training");
+                System.out.println("Failed to send data to python, shutting down training...");
+            }
+
+            try{
+                int respLen = input.readInt();
+                byte[] resp = input.readNBytes(respLen);
+
+                Action action = Action.parseFrom(resp);
+
+                List<Float> actions = action.getActionsList();
+                int actionLen = actions.size();
+
+                System.out.println("LEN: " + actionLen);
+                System.out.println(Arrays.deepToString(actions.toArray()));
+
+
+            }catch(SocketTimeoutException ignored) {
+
+            }
+            catch (IOException e) {
+                server.getCommandManager().parseAndExecute(server.getCommandSource(), "/stop_training");
+            }
 
         });
     }
@@ -157,6 +299,34 @@ public class Minecraftaimod implements ModInitializer {
         double time = (double) world.getTime();
         double lightLevel = world.getLightLevel(agent.getBlockPos());
 
+        HitResult raycast = agent.raycast(6.0, 0.0F, false);
+
+        double[] looking_at = {0, 0, 0};
+        double looking_at_id = 0;
+
+        switch(raycast.getType()) {
+            case BLOCK:
+                looking_at[0] = 1;
+
+                BlockHitResult blockHit = (BlockHitResult) raycast;
+                BlockPos pos = blockHit.getBlockPos();
+                BlockState state = agent.getEntityWorld().getBlockState(pos);
+
+                looking_at_id = Block.STATE_IDS.getRawId(state);
+                break;
+            case ENTITY:
+                looking_at[1] = 1;
+
+                EntityHitResult entityHit = (EntityHitResult) raycast;
+                Entity entity = entityHit.getEntity();
+
+                looking_at_id = Registries.ENTITY_TYPE.getRawId(entity.getType());
+                break;
+            case MISS:
+                looking_at[2] = 1;
+                break;
+        }
+
         double[] agentInfo = new double[]{
                 health,
                 hunger,
@@ -164,6 +334,8 @@ public class Minecraftaimod implements ModInitializer {
                 agentPos[0],
                 agentPos[1],
                 agentPos[2],
+                agentPos[3],
+                agentPos[4],
                 vx,
                 vy,
                 vz,
@@ -180,6 +352,10 @@ public class Minecraftaimod implements ModInitializer {
                 mainHandSlot,
                 time,
                 lightLevel,
+                looking_at[0],
+                looking_at[1],
+                looking_at[2],
+                looking_at_id,
         };
 
         return agentInfo;
@@ -278,7 +454,7 @@ public class Minecraftaimod implements ModInitializer {
      * 41–44  : Crafting grid output + 2x2 crafting input (ignored)
      *
      * @return double[][] where each row =
-     *         [item_id, count, durability, isArmor, isFood, isTool, isWeapon, utility1, utility2]
+     *         [item_id, isArmor, isFood, isTool, isWeapon, utility1, utility2, count, durability]
      *         Check getUtility function for posible utility values
      */
     private double[][] getInventory(){
@@ -289,7 +465,7 @@ public class Minecraftaimod implements ModInitializer {
             ItemStack stack = agentInventory.getStack(i);
             Item item = stack.getItem();
 
-            int item_id = Item.getRawId(item);
+            int item_id = Registries.ITEM.getRawId(item);
             int count = stack.getCount();
             int durability = stack.getMaxDamage() - stack.getDamage();
 
@@ -322,14 +498,14 @@ public class Minecraftaimod implements ModInitializer {
             double[] utility_value = getUtility(item, itemType);
 
             inventoryArray[i][0] = item_id;
-            inventoryArray[i][1] = count;
-            inventoryArray[i][2] = durability;
-            inventoryArray[i][3] = isArmor;
-            inventoryArray[i][4] = isFood;
-            inventoryArray[i][5] = isTool;
-            inventoryArray[i][6] = isWeapon;
-            inventoryArray[i][7] = utility_value[0];
-            inventoryArray[i][8] = utility_value[1];;
+            inventoryArray[i][1] = isArmor;
+            inventoryArray[i][2] = isFood;
+            inventoryArray[i][3] = isTool;
+            inventoryArray[i][4] = isWeapon;
+            inventoryArray[i][5] = utility_value[0];
+            inventoryArray[i][6] = utility_value[1];
+            inventoryArray[i][7] = count;
+            inventoryArray[i][8] = durability;
         }
 
         return inventoryArray;
@@ -338,7 +514,7 @@ public class Minecraftaimod implements ModInitializer {
     /**
      * Gets Entities within a given radius of the agent
      * @return double[][] where each row =
-     *         [entity id, x, y, z, isMonster, isAngerable, isPassive, isUnknown]
+     *         [entity id, isMonster, isAngerable, isPassive, isUnknown, x, y, z]
      */
     private double[][] getNearbyEntities(){
         double agentSearchRadius = 10.0;
@@ -357,13 +533,13 @@ public class Minecraftaimod implements ModInitializer {
             int isUnknown = (isMonster != 1 && isAngerable != 1 && isPassive != 1) ? 1 : 0;
 
             foundEntities[i][0] = Registries.ENTITY_TYPE.getRawId(entity.getType());
-            foundEntities[i][1] = entity.getX() - agent.getX();
-            foundEntities[i][2] = entity.getY() - agent.getY();
-            foundEntities[i][3] = entity.getZ() - agent.getZ();
-            foundEntities[i][4] = isMonster;
-            foundEntities[i][5] = isAngerable;
-            foundEntities[i][6] = isPassive;
-            foundEntities[i][7] = isUnknown;
+            foundEntities[i][1] = isMonster;
+            foundEntities[i][2] = isAngerable;
+            foundEntities[i][3] = isPassive;
+            foundEntities[i][4] = isUnknown;
+            foundEntities[i][5] = entity.getX() - agent.getX();
+            foundEntities[i][6] = entity.getY() - agent.getY();
+            foundEntities[i][7] = entity.getZ() - agent.getZ();
         }
 
         // Runs and sets default value for no entities if less than 10 entities found
@@ -408,7 +584,7 @@ public class Minecraftaimod implements ModInitializer {
                     int relativeBlockY = y - agentBlockY;;
                     int relativeBlockZ = z - agentBlockZ;
 
-                    foundBlocks[idx][0] = Block.STATE_IDS.getRawId(state);
+                    foundBlocks[idx][0] = Registries.BLOCK.getRawId(state.getBlock());
                     foundBlocks[idx][1] = relativeBlockX;
                     foundBlocks[idx][2] = relativeBlockY;
                     foundBlocks[idx][3] = relativeBlockZ;

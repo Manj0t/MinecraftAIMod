@@ -49,10 +49,10 @@ class ActorCriticNetwork(nn.Module):
         block_x = self.block_transformer(block_embedding)
         entity_x = self.entity_transformer(entity_embedding)
 
-        print(item_x.shape)
-        print(block_x.shape)
-        print(entity_x.shape)
-        print(agent_info.shape)
+        # print(item_x.shape)
+        # print(block_x.shape)
+        # print(entity_x.shape)
+        # print(agent_info.shape)
 
         return torch.cat([agent_info, item_x, block_x, entity_x], dim=-1)
 
@@ -89,8 +89,8 @@ class ActorCriticNetwork(nn.Module):
 
     def forward(self, obs):
         n_obs = self.obs_preprocessing(obs)
-        print(n_obs.shape)
-        print(n_obs)
+        # print(n_obs.shape)
+        # print(n_obs)
         x = self.shared_layers(n_obs)
 
         policy_logits = self.get_policy_logits(x)

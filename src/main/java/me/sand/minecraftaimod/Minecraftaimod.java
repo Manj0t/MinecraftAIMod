@@ -56,7 +56,8 @@ import me.sand.minecraftaimod.protobuf.Action;
 public class Minecraftaimod implements ModInitializer {
 
     public static final Logger LOGGER = LoggerFactory.getLogger("collect-state-info");
-    private boolean collecting = false;
+    private volatile boolean collecting = false;
+
 
     private ServerPlayerEntity agent = null;
     private String agentName = null;
@@ -69,7 +70,9 @@ public class Minecraftaimod implements ModInitializer {
     DataInputStream input = null;
     DataOutputStream output = null;
 
-    boolean waitingForAction = false;
+    private volatile boolean sendState = false;
+    private volatile boolean sendReward = false;
+    private volatile boolean recieveAction = false;
 
     @Override
     public void onInitialize() {
@@ -96,7 +99,8 @@ public class Minecraftaimod implements ModInitializer {
 //                                            System.out.println("INFO: FINISHED SLEEPING");
 
                                             socket = new Socket("localhost", 5000);
-                                            socket.setSoTimeout(5);
+                                            socket.setTcpNoDelay(true);
+                                            socket.setSoTimeout(0);
 
                                             input = new DataInputStream(socket.getInputStream());
                                             output = new DataOutputStream(socket.getOutputStream());
@@ -113,6 +117,8 @@ public class Minecraftaimod implements ModInitializer {
                                             output.writeInt(numBlocks);
                                             output.writeInt(numEntities);
                                             output.flush();
+
+                                            sendState = true;
 
 //                                            out.println("exit");
 //                                            System.out.println("Python replied: " + in.readLine());
@@ -132,7 +138,6 @@ public class Minecraftaimod implements ModInitializer {
 
                 server.getCommandManager().parseAndExecute(server.getCommandSource(), "/player " + agentName + " kill");
 
-                waitingForAction = false;
                 agent = null;
                 agentName = null;
 
@@ -174,67 +179,67 @@ public class Minecraftaimod implements ModInitializer {
          ************************************************
          */
         ServerTickEvents.END_SERVER_TICK.register(server -> {
-            if (!collecting) return; // only run if training started
-            if (agent == null && agentName != null) {
-                for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
-                    if (agentName.equals(player.getName().getString().toLowerCase())) {
-                        agent = player;
-                        world = agent.getEntityWorld();
-                        server.getCommandManager().parseAndExecute(server.getCommandSource(), "/gamemode survival " + agentName);
-                        System.out.println("found");
-                        break;
+                    if (!collecting) return; // only run if training started
+                    if (agent == null && agentName != null) {
+                        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+                            if (agentName.equals(player.getName().getString().toLowerCase())) {
+                                agent = player;
+                                world = agent.getEntityWorld();
+                                server.getCommandManager().parseAndExecute(server.getCommandSource(), "/gamemode survival " + agentName);
+                                System.out.println("found");
+                                break;
+                            }
+                        }
+                        if (agent == null) return;
                     }
-                }
-                if (agent == null) return;
-            }
-            // Agent Position Information
+                    // Agent Position Information
 
-            if(!waitingForAction){
-                sendStateInfo(server);
-                waitingForAction = true;
-                return;
-            }
+                    if (sendState) {
+                        sendStateInfo(server);
+                        sendState = false;
+                        recieveAction = true;
+                        return;
+                    }
 
 //            Recieve action
-            try{
-                int respLen = input.readInt();
-                byte[] resp = input.readNBytes(respLen);
+                    if (recieveAction) {
+                        try {
+                            int respLen = input.readInt();
+                            byte[] resp = input.readNBytes(respLen);
 
-                Action action = Action.parseFrom(resp);
+                            Action action = Action.parseFrom(resp);
 
-                List<Float> actions = action.getActionsList();
-                int actionLen = actions.size();
+                            List<Float> actions = action.getActionsList();
+                            int actionLen = actions.size();
 
-                System.out.println("LEN: " + actionLen);
-                System.out.println(Arrays.deepToString(actions.toArray()));
+                            System.out.println("LEN: " + actionLen);
+                            System.out.println(Arrays.deepToString(actions.toArray()));
 
-                float reward = 5f;
-                output.writeFloat(reward);
-                output.writeInt(0);
-                output.flush();
+                            recieveAction = false;
+                            sendReward = true;
+                        } catch (Exception e) {
 
-                // Move on yet or no?
-                input.readInt();
+                        }
+                    }
 
-                waitingForAction = false;
-            }catch(SocketTimeoutException ignored) {
+                    if (sendReward) {
+                        try{
+                            float reward = 5f;
+                            output.writeFloat(reward);
+                            output.writeInt(0);
+                            output.flush();
 
-            }
-            catch (IOException e) {
-                System.out.println("ERROR: FAILED");
-                server.getCommandManager().parseAndExecute(server.getCommandSource(), "/stop_training");
-            }
-
-//            try{
-//                int reward = 5;
-//                output.writeInt(reward);
-//                output.flush();
-//            } catch (IOException e) {
-//                e.printStackTrace();
-//            }
+                            sendReward = false;
+                            sendState = true;
+                    }
+                    catch(IOException e){
+                        System.out.println("ERROR: FAILED");
+                        server.getCommandManager().parseAndExecute(server.getCommandSource(), "/stop_training");
+                    }
+                }
 
         });
-        
+
     }
 
     private void sendStateInfo(MinecraftServer server){

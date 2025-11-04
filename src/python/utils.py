@@ -83,13 +83,13 @@ def take_step(action):
 
     conn.sendall(struct.pack(">i", len(out)))
     conn.sendall(out)
-    print('Sent action')
+    # print('Sent action')
 
     reward = struct.unpack(">f", conn.recv(4))[0]
-    print('Rewards recieved: ', reward)
+    # print('Rewards recieved: ', reward)
     done = struct.unpack(">i", conn.recv(4))[0]
-    print('Done recieved: ', done)
-    conn.sendall(struct.pack(">i", 1))
+    # print('Done recieved: ', done)
+    # conn.sendall(struct.pack(">i", 1))
     obs = get_state()
 
     return obs, float(reward), int(done)
@@ -125,9 +125,11 @@ def rollout(model, max_steps=2048):
     }  # obs, act, reward, value, act_log_prob, dones
 
     obs = get_state() # Should return a tensor for obs
-
+    print(max_steps)
     ep_reward = 0
-    for _ in range(max_steps):
+    for i in range(max_steps):
+        if i % 500 == 0:
+            print(i)
         logits_dict, value = model(obs)
 
         movement_dist = Categorical(logits=logits_dict['movement'])

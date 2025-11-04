@@ -1,50 +1,50 @@
-/time set day
-/start_training Empirecreator
+/start_training EmpireCreator
 /stop_training
-/start_training Empirecreator
+/start_training EmpireCreator
 /stop_training
-/start_training Empirecreator
+/start_training EmpireCreator
 /stop_training
-/start_training Empirecreator
-/stop_training
-/start_training Empirecreator
-/stop_training
-/start_training Empirecreator
-/stop_training
-/start_training Empirecreator
-/stop_training
-/start_training Empirecreator
-/stop_training
-/start_training Empirecreator
-/stop_training
-/start_training Empirecreator
-/stop_training
-/start_training Empirecreator
-/stop_training
-/start_training Empirecreator
-/stop_training
-/start_training Empirecreator
-/stop_training
-/start_training Empirecreator
-/stop_training
-/start_training Empirecreator
-/stop_training
-/start_training Empirecreator
-/stop_training
-/start_training Empirecreator
-/close_socket
-/start_training Empirecreator
-/close_socket
-/stop_training
-/start_training Empirecreator
-/stop_training
-/start_training Empirecreator
-/stop_training
-/start_training Empirecreator
-/tp Empirecreator
+/start_training EmpireCreator
 /stop_training
 /kill Empirecreator
+/start_training EmpireCreator
 /stop_training
-/start_training Empirecreator
+/start_training EmpireCreator
+/stop_training
+/start_training EmpireCreator
+/stop_training
+/start_training EmpireCreator
+/stop_training
+/start_training EmpireCreator
+/stop_training
+/start_training EmpireCreator
+/stop_training
+/start_training EmpireCreator
+/stop_training
+/start_training EmpireCreator
+/stop_training
+/start_training EmpireCreator
+/time set day
+/start_training EmpireCreator
 /tp Empirecreator
-/start_training Empirecreator
+/start_training EmpireCreator
+/stop_training
+/start_training EmpireCreator
+/stop_training
+/kill Empirecreator
+/start_training EmpireCreator
+/time set day
+/start_training EmpireCreator
+/time set day
+/start_training EmpireCreator
+/gamemode spectator
+/tp Empirecreator
+/gamemode creative
+/time set night
+/stop_training
+/tp Empirecreator
+/start_training EmpireCreator
+/stop_training
+/start_training EmpireCreator
+/time set day
+/start_training EmpireCreator

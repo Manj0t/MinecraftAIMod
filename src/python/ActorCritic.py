@@ -74,13 +74,14 @@ class ActorCriticNetwork(nn.Module):
 
 
     def value(self, obs):
-        x = self.shared_layers(obs)
+        n_obs = self.obs_preprocessing(obs)
+        x = self.shared_layers(n_obs)
         return self.value_layer(x)
 
 
-    def policy(self, x):
-        x = self.obs_preprocessing(x)
-        x = self.shared_layers(x)
+    def policy(self, obs):
+        n_obs = self.obs_preprocessing(obs)
+        x = self.shared_layers(n_obs)
 
         policy_logits = self.get_policy_logits(x)
 

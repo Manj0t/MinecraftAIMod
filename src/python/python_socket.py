@@ -39,7 +39,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     print('agent_info_dim: ', agent_info_dim)
     print('num_items: ', num_items)
     print('num_blocks: ', num_blocks)
-    print('num_entities: ' ,num_entities)
+    print('num_entities: ', num_entities)
 
     model = ActorCriticNetwork(agent_info_dim, num_items, num_blocks, num_entities)
     model.to(DEVICE)
@@ -49,15 +49,25 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     while True:
         train_data, ep_reward = rollout(model)
 
-        permute_idxs = np.random.permutation(len(train_data['obs']))
+        permute_idxs = np.random.permutation(len(train_data['InventoryObs']))
 
-        obs = train_data['obs'][permute_idxs]
+        # Are already tensors
+        print(f'InventoryObs: {train_data["InventoryObs"]}')
+
+        obs = {
+            'Inventory' : torch.tensor(train_data['InventoryObs'][permute_idxs], dtype=torch.long, device=DEVICE),
+            'Blocks'    : torch.tensor(train_data['BlocksObs'][permute_idxs], dtype=torch.long, device=DEVICE),
+            'Entities'  : torch.tensor(train_data['EntitiesObs'][permute_idxs], dtype=torch.long, device=DEVICE),
+            'AgentInfo' : torch.tensor(train_data['AgentInfoObs'][permute_idxs], dtype=torch.long, device=DEVICE)
+        }
+
+        print(f'obs: {obs}')
 
         act = {
             'movement'  : torch.tensor(train_data['movement'][permute_idxs], dtype=torch.long, device=DEVICE),
             'jump'      : torch.tensor(train_data['jump'][permute_idxs], dtype=torch.long, device=DEVICE),
             'item_use'  : torch.tensor(train_data['item_use'][permute_idxs], dtype=torch.long, device=DEVICE),
-            'hotbar'   : torch.tensor(train_data['hotbar'][permute_idxs], dtype=torch.long, device=DEVICE)
+            'hotbar'    : torch.tensor(train_data['hotbar'][permute_idxs], dtype=torch.long, device=DEVICE)
         }
 
         advantages = torch.tensor(train_data['advantage'][permute_idxs], dtype=torch.float32, device=DEVICE)

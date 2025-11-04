@@ -111,9 +111,12 @@ def compute_gaes(rewards, values, dones, gamma=0.99, lam=0.95):
     return advantages, returns
 
 
-def rollout(model, max_steps=2048):
+def rollout(model, max_steps=10):
     rollout_buffer = {
-        "obs": [],
+        "InventoryObs": [],
+        "BlocksObs": [],
+        "EntitiesObs": [],
+        "AgentInfoObs": [],
         "movement": [],
         "jump": [],
         "item_use": [],
@@ -132,6 +135,16 @@ def rollout(model, max_steps=2048):
             print(i)
         logits_dict, value = model(obs)
 
+        # print(f'movement logits {logits_dict['movement']}')
+        # print(f'jump logits {logits_dict['jump']}')
+        # print(f'item_use logits {logits_dict['item_use']}')
+        # print(f'hotbar logits {logits_dict['hotbar']}')
+        #
+        # print(f'movement shape {logits_dict["movement"].shape}')
+        # print(f'jump shape {logits_dict["jump"].shape}')
+        # print(f'item_use shape {logits_dict["item_use"].shape}')
+        # print(f'hotbar shape {logits_dict["hotbar"].shape}')
+
         movement_dist = Categorical(logits=logits_dict['movement'])
         jump_dist = Bernoulli(logits=logits_dict['jump'])
         item_use_dist = Categorical(logits=logits_dict['item_use'])
@@ -142,23 +155,43 @@ def rollout(model, max_steps=2048):
         item_use_act = item_use_dist.sample()
         hotbar_act = hotbar_dist.sample()
 
+        # print(f'movement: {movement_act.item()}')
+        # print(f'jump: {jump_act.item()}')
+        # print(f'item_use: {item_use_act.item()}')
+        # print(f'hotbar: {hotbar_act.item()}')
+
         movement_log_prob = movement_dist.log_prob(movement_act)
         jump_log_prob = jump_dist.log_prob(jump_act)
         item_use_log_prob = item_use_dist.log_prob(item_use_act)
         hotbar_log_prob = hotbar_dist.log_prob(hotbar_act)
 
+        # print(f'Value before : {value}')
+        # print(f'Value shape : {value.shape}')
+
         act_log_prob = movement_log_prob + jump_log_prob + item_use_log_prob + hotbar_log_prob
 
         act_log_prob = act_log_prob.detach().cpu().item()
         value = value.detach().cpu().squeeze().item()
+
+        # print(f'Value: {value}')
         # logits_np = {
         #     "movement": logits_dict["movement"].detach().cpu().numpy(),
         #     "jump": logits_dict["jump"].detach().cpu().numpy(),
         #     "item_use": logits_dict["item_use"].detach().cpu().numpy(),
         #     "hotbar": logits_dict["hotbar"].detach().cpu().numpy(),
         # }
+        #
+        # rollout_buffer["obs"].append({
+        #     'Inventory' : obs['Inventory'].clone(),
+        #     'Blocks'    : obs['Blocks'].clone(),
+        #     'Entities'  : obs['Entities'].clone(),
+        #     'AgentInfo' : obs['AgentInfo'].clone()
+        # })
 
-        rollout_buffer["obs"].append(obs)
+        rollout_buffer['InventoryObs'].append(obs['Inventory'].clone())
+        rollout_buffer['BlocksObs'].append(obs['Blocks'].clone())
+        rollout_buffer['EntitiesObs'].append(obs['Entities'].clone())
+        rollout_buffer['AgentInfoObs'].append(obs['AgentInfo'].clone())
         rollout_buffer["movement"].append(movement_act.detach().cpu())
         rollout_buffer["jump"].append(jump_act.detach().cpu())
         rollout_buffer["item_use"].append(item_use_act.detach().cpu())
@@ -185,12 +218,15 @@ def rollout(model, max_steps=2048):
             break
 
     # logits is dict, won't work
-    for key in ["movement", "jump", "item_use", "hotbar", "log_prob", "value", "reward", "done"]:
+    for key in ["InventoryObs", "BlocksObs", "EntitiesObs", "AgentInfoObs", "movement", "jump", "item_use", "hotbar", "log_prob", "value", "reward", "done"]:
         rollout_buffer[key] = np.array(rollout_buffer[key], dtype=np.float32)
 
     advantages, returns = compute_gaes(rollout_buffer['reward'], rollout_buffer['value'], rollout_buffer['done'])
 
     rollout_buffer['advantage'] = advantages
     rollout_buffer['returns'] = returns
+
+    # print(rollout_buffer)
+
 
     return rollout_buffer, ep_reward

@@ -25,13 +25,18 @@ def set_conn(connection):
 
 
 def get_state():
+
+    print('Getting state size...')
     size_bytes = conn.recv(4)
     if not size_bytes:
         print("Java closed connection, exiting loop.")
         return
 
+    print('Recieved Size')
+
     size = struct.unpack(">i", size_bytes)[0]
 
+    print('Getting state now')
     buffer = bytearray()
     while len(buffer) < size:
         chunk = conn.recv(size - len(buffer))
@@ -42,6 +47,7 @@ def get_state():
         print("Didn't receive exactly ", len(buffer), "bytes")
         print("Shutting down...")
 
+    print('Got state')
     state = state_pb2.State()
     state.ParseFromString(buffer)
 
@@ -76,7 +82,7 @@ def get_state():
     return obs
 
 
-def take_step(action):
+def take_step(action, max_steps, i):
     out_action = state_pb2.Action()
     out_action.actions.extend(action)
     out = out_action.SerializeToString()
@@ -90,6 +96,13 @@ def take_step(action):
     done = struct.unpack(">i", conn.recv(4))[0]
     # print('Done recieved: ', done)
     # conn.sendall(struct.pack(">i", 1))
+    # Ending rollout
+    if i == max_steps - 1:
+        conn.sendall(struct.pack(">i", 0))
+        return None, float(reward), int(done)
+    # Continue Rollout
+    else:
+        conn.sendall(struct.pack(">i", 1))
     obs = get_state()
 
     return obs, float(reward), int(done)
@@ -126,6 +139,8 @@ def rollout(model, max_steps=10):
         "log_prob": [],
         "done": []
     }  # obs, act, reward, value, act_log_prob, dones
+    print('Sending start State')
+
 
     obs = get_state() # Should return a tensor for obs
     print(max_steps)
@@ -145,6 +160,9 @@ def rollout(model, max_steps=10):
         # print(f'item_use shape {logits_dict["item_use"].shape}')
         # print(f'hotbar shape {logits_dict["hotbar"].shape}')
 
+        logits_dict['jump'] = logits_dict['jump'].squeeze(-1)
+        print(f'Jump logits shape {logits_dict['jump'].shape}')
+
         movement_dist = Categorical(logits=logits_dict['movement'])
         jump_dist = Bernoulli(logits=logits_dict['jump'])
         item_use_dist = Categorical(logits=logits_dict['item_use'])
@@ -155,6 +173,10 @@ def rollout(model, max_steps=10):
         item_use_act = item_use_dist.sample()
         hotbar_act = hotbar_dist.sample()
 
+        print(f'Rollout movment shape {movement_act.shape}')
+        print(f'Rollout jump shape {jump_act.shape}')
+        print(f'Rollout item use shape {item_use_act.shape}')
+        print(f'Rollout hotbar shape {hotbar_act.shape}')
         # print(f'movement: {movement_act.item()}')
         # print(f'jump: {jump_act.item()}')
         # print(f'item_use: {item_use_act.item()}')
@@ -188,10 +210,10 @@ def rollout(model, max_steps=10):
         #     'AgentInfo' : obs['AgentInfo'].clone()
         # })
 
-        rollout_buffer['InventoryObs'].append(obs['Inventory'].clone())
-        rollout_buffer['BlocksObs'].append(obs['Blocks'].clone())
-        rollout_buffer['EntitiesObs'].append(obs['Entities'].clone())
-        rollout_buffer['AgentInfoObs'].append(obs['AgentInfo'].clone())
+        rollout_buffer['InventoryObs'].append(obs['Inventory'].detach().cpu())
+        rollout_buffer['BlocksObs'].append(obs['Blocks'].detach().cpu())
+        rollout_buffer['EntitiesObs'].append(obs['Entities'].detach().cpu())
+        rollout_buffer['AgentInfoObs'].append(obs['AgentInfo'].detach().cpu())
         rollout_buffer["movement"].append(movement_act.detach().cpu())
         rollout_buffer["jump"].append(jump_act.detach().cpu())
         rollout_buffer["item_use"].append(item_use_act.detach().cpu())
@@ -206,7 +228,7 @@ def rollout(model, max_steps=10):
 
         action = [movement, jump, item_use, hotbar]
 
-        next_obs, reward, done = take_step(action)
+        next_obs, reward, done = take_step(action, max_steps, i)
 
         rollout_buffer["reward"].append(reward)
         rollout_buffer["done"].append(done)
@@ -219,6 +241,7 @@ def rollout(model, max_steps=10):
 
     # logits is dict, won't work
     for key in ["InventoryObs", "BlocksObs", "EntitiesObs", "AgentInfoObs", "movement", "jump", "item_use", "hotbar", "log_prob", "value", "reward", "done"]:
+        print(f'Key {key}')
         rollout_buffer[key] = np.array(rollout_buffer[key], dtype=np.float32)
 
     advantages, returns = compute_gaes(rollout_buffer['reward'], rollout_buffer['value'], rollout_buffer['done'])

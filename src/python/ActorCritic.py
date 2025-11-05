@@ -58,7 +58,6 @@ class ActorCriticNetwork(nn.Module):
             block_embedding = block_embedding.unsqueeze(0)
         if len(entity_embedding.shape) == 2:
             entity_embedding = entity_embedding.unsqueeze(0)
-
         if len(agent_info.shape) == 1:
             agent_info = agent_info.unsqueeze(0)
 

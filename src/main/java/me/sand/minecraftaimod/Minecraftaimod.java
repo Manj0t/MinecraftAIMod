@@ -73,6 +73,7 @@ public class Minecraftaimod implements ModInitializer {
     private volatile boolean sendState = false;
     private volatile boolean sendReward = false;
     private volatile boolean recieveAction = false;
+    private volatile boolean waitForNextRollout = false;
 
     @Override
     public void onInitialize() {
@@ -118,8 +119,7 @@ public class Minecraftaimod implements ModInitializer {
                                             output.writeInt(numEntities);
                                             output.flush();
 
-                                            sendState = true;
-
+                                            waitForNextRollout = true;
 //                                            out.println("exit");
 //                                            System.out.println("Python replied: " + in.readLine());
 
@@ -193,7 +193,19 @@ public class Minecraftaimod implements ModInitializer {
                         if (agent == null) return;
                     }
                     // Agent Position Information
-
+                    if(waitForNextRollout) {
+                        try {
+                            System.out.println("INFO: Waiting for next rollout");
+                            int startRollout = input.readInt();
+                            System.out.println("startRollout: " + startRollout);
+                            if(startRollout > 0) {
+                                waitForNextRollout = false;
+                                sendState = true;
+                            }
+                        }catch (IOException e) {
+                            System.err.println("Error reading rollout command: " + e.getMessage());
+                        }
+                    }
                     if (sendState) {
                         sendStateInfo(server);
                         sendState = false;
@@ -230,8 +242,18 @@ public class Minecraftaimod implements ModInitializer {
                             output.flush();
 
                             sendReward = false;
-                            sendState = true;
-                    }
+
+
+                            int continueRollout = input.readInt();
+
+                            if(continueRollout == 1){
+                                sendState = true;
+                            } else{
+                                waitForNextRollout = true;
+                            }
+
+
+                        }
                     catch(IOException e){
                         System.out.println("ERROR: FAILED");
                         server.getCommandManager().parseAndExecute(server.getCommandSource(), "/stop_training");

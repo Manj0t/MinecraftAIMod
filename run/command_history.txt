@@ -2,35 +2,35 @@
 /start_training Steve
 /stop_training
 /start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
 /time set day
-/stop_training
-/time set day
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/time set day
-/start_training Steve
-/time set day
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
+/weather clear
 /start_training Steve
 /stop_training
 /start_training Steve

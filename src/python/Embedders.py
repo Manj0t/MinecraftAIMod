@@ -79,6 +79,7 @@ class EntityEmbedder(nn.Module):
             nn.Linear(32, 16),
         )
 
+
         self.final = nn.Sequential(
             nn.Linear(64 + 16 + 3, 64),
             nn.ReLU(),

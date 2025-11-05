@@ -39,6 +39,11 @@ class PPOTrainer():
             item_use_act = act['item_use']
             hotbar_act = act['hotbar']
 
+            print(f' movement shape : {movement_act.shape}')
+            print(f' jump shape : {jump_act.shape}')
+            print(f' item use shape : {item_use_act.shape}')
+            print(f' hotbar shape : {hotbar_act.shape}')
+
             movement_log_prob = movement_dist.log_prob(movement_act)
             jump_log_prob = jump_dist.log_prob(jump_act)
             item_use_log_prob = item_use_dist.log_prob(item_use_act)

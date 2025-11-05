@@ -36,10 +36,10 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     agent_info_dim, num_items, num_blocks, num_entities = struct.unpack(">4i", buffer)
 
 
-    print('agent_info_dim: ', agent_info_dim)
-    print('num_items: ', num_items)
-    print('num_blocks: ', num_blocks)
-    print('num_entities: ', num_entities)
+    # print('agent_info_dim: ', agent_info_dim)
+    # print('num_items: ', num_items)
+    # print('num_blocks: ', num_blocks)
+    # print('num_entities: ', num_entities)
 
     model = ActorCriticNetwork(agent_info_dim, num_items, num_blocks, num_entities)
     model.to(DEVICE)
@@ -52,7 +52,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         permute_idxs = np.random.permutation(len(train_data['InventoryObs']))
 
         # Are already tensors
-        print(f'InventoryObs: {train_data["InventoryObs"]}')
+        # print(f'InventoryObs: {train_data["InventoryObs"]}')
 
         obs = {
             'Inventory' : torch.tensor(train_data['InventoryObs'][permute_idxs], dtype=torch.long, device=DEVICE),

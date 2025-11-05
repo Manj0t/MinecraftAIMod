@@ -13,10 +13,11 @@ class ActorCriticNetwork(nn.Module):
 
         embed_dim = 64
         self.item_transformer = MinecraftTransformer(embed_dim)
+        #  * ( (5 * 2) + 1) * ( (3 * 2) + 1) * ( (5 * 2) + 1 )
         self.block_transformer = MinecraftTransformer(embed_dim)
         self.entity_transformer = MinecraftTransformer(embed_dim)
 
-        obs_space_size = agent_info_dim + embed_dim * 3
+        obs_space_size = agent_info_dim + 41 * embed_dim + embed_dim* ( (5 * 2) + 1) * ( (3 * 2) + 1) * ( (5 * 2) + 1 ) + 10 * embed_dim
 
         self.shared_layers = nn.Sequential(
             nn.Linear(obs_space_size, 256),
@@ -40,14 +41,35 @@ class ActorCriticNetwork(nn.Module):
 
 
     def obs_preprocessing(self, obs):
-        item_embedding = self.item_embedder(obs['Inventory']).unsqueeze(0)
-        block_embedding = self.block_embedder(obs['Blocks']).unsqueeze(0)
-        entity_embedding = self.entity_embedder(obs['Entities']).unsqueeze(0)
-        agent_info = obs['AgentInfo'].unsqueeze(0)
+        print(obs['Inventory'].shape)
+        item_embedding = self.item_embedder(obs['Inventory'])
+        block_embedding = self.block_embedder(obs['Blocks'])
+        entity_embedding = self.entity_embedder(obs['Entities'])
+        agent_info = obs['AgentInfo']
 
-        item_x = self.item_transformer(item_embedding)
+        print(f'item_embeding shape {item_embedding.shape}')
+        print(f'block_embedding shape {block_embedding.shape}')
+        print(f'entity_embedding shape {entity_embedding.shape}')
+        print(f'agent_info shape {agent_info.shape}')
+
+        if len(item_embedding.shape) == 2:
+            item_embedding = item_embedding.unsqueeze(0)
+        if len(block_embedding.shape) == 2:
+            block_embedding = block_embedding.unsqueeze(0)
+        if len(entity_embedding.shape) == 2:
+            entity_embedding = entity_embedding.unsqueeze(0)
+
+        if len(agent_info.shape) == 1:
+            agent_info = agent_info.unsqueeze(0)
+
+        print(f'agent_info shape after {agent_info.shape}')
+        print(f'item_embedding shape after {item_embedding.shape}')
+        print(f'block_embedding shape after {block_embedding.shape}')
+        print(f'entity_embedding shape after {entity_embedding.shape}')
+
+        item_x = torch.flatten(item_embedding, start_dim=1)
         block_x = self.block_transformer(block_embedding)
-        entity_x = self.entity_transformer(entity_embedding)
+        entity_x = torch.flatten(entity_embedding, start_dim=1)
 
         # print(item_x.shape)
         # print(block_x.shape)

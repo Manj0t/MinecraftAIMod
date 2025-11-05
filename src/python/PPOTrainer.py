@@ -29,10 +29,10 @@ class PPOTrainer():
 
             logits_dict = self.ac.policy(obs)
 
-            movement_dist = Categorical(logits_dict['movement'])
-            jump_dist = Bernoulli(logits_dict['jump'].squeeze(-1))
-            item_use_dist = Categorical(logits_dict['item_use'])
-            hotbar_dist = Categorical(logits_dict['hotbar'])
+            movement_dist = Categorical(logits=logits_dict['movement'])
+            jump_dist = Bernoulli(logits=logits_dict['jump'].squeeze(-1))
+            item_use_dist = Categorical(logits=logits_dict['item_use'])
+            hotbar_dist = Categorical(logits=logits_dict['hotbar'])
 
             movement_act = act['movement']
             jump_act = act['jump']

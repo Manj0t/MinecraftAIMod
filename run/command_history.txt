@@ -1,27 +1,10 @@
-/time set night
 /stop_training
-/tp Empirecreator
-/start_training EmpireCreator
+/start_training Steve
 /stop_training
-/start_training EmpireCreator
-/time set day
-/start_training EmpireCreator
-/stop_training
-/start_training EmpireCreator
-/tp Empirecreator
 /start_training Steve
 /time set day
 /stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
+/time set day
 /start_training Steve
 /stop_training
 /start_training Steve
@@ -37,14 +20,31 @@
 /start_training Steve
 /stop_training
 /start_training Steve
-/time set day
 /stop_training
-/time set day
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
 /start_training Steve
 /stop_training
 /start_training Steve
 /stop_training
 /start_training Steve
 /stop_training
-/time set day
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
+/start_training Steve
+/stop_training
 /start_training Steve

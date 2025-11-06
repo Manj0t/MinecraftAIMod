@@ -17,18 +17,6 @@
 /stop_training
 /start_training Steve
 /stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
 /time set day
 /weather clear
 /start_training Steve
@@ -48,3 +36,15 @@
 /start_training Steve
 /stop_training
 /start_training Steve
+/tp Steve
+/start_training Steve
+/tp Steve
+/stop_training
+/start_training Steve
+/tp Steve ~ ~ ~
+/stop_training
+/tp Steve ~ ~ ~
+/start_training Steve
+/tp Steve ~ ~ ~
+/start_training Steve
+/stop_training

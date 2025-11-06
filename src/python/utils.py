@@ -124,7 +124,7 @@ def compute_gaes(rewards, values, dones, gamma=0.99, lam=0.95):
     return advantages, returns
 
 
-def rollout(model, max_steps=10):
+def rollout(model, max_steps=1024):
     rollout_buffer = {
         "InventoryObs": [],
         "BlocksObs": [],

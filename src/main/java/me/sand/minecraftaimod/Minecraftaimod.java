@@ -14,6 +14,7 @@ import net.minecraft.component.type.FoodComponent;
 import net.minecraft.component.type.ToolComponent;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.entity.MovementType;
 import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.LivingEntity;
@@ -26,11 +27,13 @@ import net.minecraft.registry.Registries;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.text.Text;
+import net.minecraft.util.Hand;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import org.slf4j.Logger;
@@ -39,9 +42,7 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 import static net.minecraft.server.command.CommandManager.argument;
 import static net.minecraft.server.command.CommandManager.literal;
@@ -74,6 +75,13 @@ public class Minecraftaimod implements ModInitializer {
     private volatile boolean sendReward = false;
     private volatile boolean recieveAction = false;
     private volatile boolean waitForNextRollout = false;
+
+    private final Map<Integer, Runnable> movementActions = new HashMap<>();
+
+    int currentHand = 0;
+    private double speed = 0.20;
+
+    Vec3d lastPos = null;
 
     @Override
     public void onInitialize() {
@@ -129,6 +137,13 @@ public class Minecraftaimod implements ModInitializer {
                                             System.out.println("ERROR: FAILED ");
                                         }
                                         System.out.println("Success? ");
+
+                                        movementActions.put(0, this::moveForward);
+                                        movementActions.put(1, this::moveBackward);
+                                        movementActions.put(2, this::moveLeft);
+                                        movementActions.put(3, this::moveRight);
+                                        movementActions.put(4, null);
+
                                         return 1;
             })));
 
@@ -194,6 +209,7 @@ public class Minecraftaimod implements ModInitializer {
                     }
                     // Agent Position Information
                     if(waitForNextRollout) {
+                        lastPos = null;
                         try {
                             System.out.println("INFO: Waiting for next rollout");
                             int startRollout = input.readInt();
@@ -224,6 +240,8 @@ public class Minecraftaimod implements ModInitializer {
                             List<Float> actions = action.getActionsList();
                             int actionLen = actions.size();
 
+                            applyAction(actions);
+
                             System.out.println("LEN: " + actionLen);
                             System.out.println(Arrays.deepToString(actions.toArray()));
 
@@ -236,7 +254,7 @@ public class Minecraftaimod implements ModInitializer {
 
                     if (sendReward) {
                         try{
-                            float reward = 5f;
+                            float reward = (float) getReward();
                             output.writeFloat(reward);
                             output.writeInt(0);
                             output.flush();
@@ -261,6 +279,127 @@ public class Minecraftaimod implements ModInitializer {
                 }
 
         });
+
+    }
+
+    private double getReward() {
+        // initialize at first step
+        if (lastPos == null) {
+            lastPos = new Vec3d(agent.getX(), agent.getY(), agent.getZ());
+            return 0.0;
+        }
+
+        Vec3d currentPos = new Vec3d(agent.getX(), agent.getY(), agent.getZ());
+
+        double distMoved = currentPos.distanceTo(lastPos);
+        lastPos = currentPos;
+
+        double reward = distMoved * 10.0;
+
+        if (!agent.isOnGround()) {
+            reward += 0.05;
+        }
+
+        // Penalize fall damage (teaches agent to avoid cliffs)
+        if (agent.fallDistance > 2.5) {
+            reward -= agent.fallDistance * 0.5;
+        }
+
+        // basic exploration reward
+        return reward;   // encourage movement, penalize sitting
+    }
+
+    private void applyAction(List<Float> actions) {
+        int movement = actions.get(0).intValue();
+        int jump = actions.get(1).intValue();
+        int item_use = actions.get(2).intValue();
+        int hotbar_idx = actions.get(3).intValue();
+
+        Runnable movementAction = movementActions.get(movement);
+        if (movementAction != null) {
+            movementAction.run();
+        }
+
+        if(jump > 0){
+            jump();
+        }
+
+        // 2 is don't use item
+//        if(item_use < 2){
+//            if(item_use == 0){
+//                HitResult hit = agent.raycast(4.5, 1.0F, false); // reach ~4.5 blocks
+//                if (hit.getType() != HitResult.Type.BLOCK) return;
+//
+//                BlockHitResult bhr = (BlockHitResult) hit;
+//                BlockPos pos = bhr.getBlockPos();
+//                Direction side = bhr.getSide();
+//
+//                agent.swingHand(Hand.MAIN_HAND);
+//
+//                // Survival-style mining (call this EVERY tick while "holding" LMB):
+//                agent.interactionManager.updateBlockBreakingProgress(pos, side);
+//            }else{
+//                agent.swingHand(Hand.MAIN_HAND);
+//
+//                var result = agent.interactionManager.interactItem(agent, world, Hand.MAIN_HAND);
+//
+//                if (!result.isAccepted()) {
+//                    HitResult hit = agent.raycast(4.5, 1.0F, false);
+//                    if (hit.getType() == HitResult.Type.BLOCK) {
+//                        agent.interactionManager.interactBlock(
+//                                agent, world, Hand.MAIN_HAND, (BlockHitResult) hit
+//                        );
+//                    }
+//                }
+//            }
+//        }
+
+        if(hotbar_idx != currentHand){
+            agent.getInventory().setSelectedSlot(hotbar_idx);
+            currentHand = hotbar_idx;
+        }
+
+    }
+
+    private void moveForward(){
+        Vec3d lookDir = agent.getRotationVec(1.0F);
+
+        Vec3d movement = new Vec3d(lookDir.x * speed, 0, lookDir.z * speed);
+
+        agent.addVelocity(movement);
+    }
+
+    private void moveBackward(){
+        Vec3d lookDir = agent.getRotationVec(1.0F);
+
+        Vec3d movement = new Vec3d(lookDir.x * speed, 0, lookDir.z * speed);
+
+        agent.addVelocity(movement);
+    }
+
+    private void moveLeft(){
+        Vec3d lookDir = agent.getRotationVec(1.0F);
+
+        Vec3d movement = new Vec3d(-lookDir.z * speed, 0, lookDir.x * speed);
+
+        agent.addVelocity(movement);
+    }
+
+    private void moveRight(){
+        Vec3d lookDir = agent.getRotationVec(1.0F);
+
+        Vec3d movement = new Vec3d(lookDir.z * speed, 0, -lookDir.x * speed);
+
+        agent.addVelocity(movement);
+    }
+
+    private void jump(){
+        if (agent.isOnGround()) {
+            agent.addVelocity(0, 0.42, 0);  // vanilla jump power
+        }
+    }
+
+    private void updateHand(int jump){
 
     }
 

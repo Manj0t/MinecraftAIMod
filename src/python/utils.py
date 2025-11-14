@@ -25,18 +25,12 @@ def set_conn(connection):
 
 
 def get_state():
-
-    print('Getting state size...')
     size_bytes = conn.recv(4)
     if not size_bytes:
         print("Java closed connection, exiting loop.")
         return
 
-    print('Recieved Size')
-
     size = struct.unpack(">i", size_bytes)[0]
-
-    print('Getting state now')
     buffer = bytearray()
     while len(buffer) < size:
         chunk = conn.recv(size - len(buffer))
@@ -47,7 +41,6 @@ def get_state():
         print("Didn't receive exactly ", len(buffer), "bytes")
         print("Shutting down...")
 
-    print('Got state')
     state = state_pb2.State()
     state.ParseFromString(buffer)
 
@@ -89,16 +82,14 @@ def take_step(action, max_steps, i):
 
     conn.sendall(struct.pack(">i", len(out)))
     conn.sendall(out)
-    # print('Sent action')
 
     reward = struct.unpack(">f", conn.recv(4))[0]
-    # print('Rewards recieved: ', reward)
     done = struct.unpack(">i", conn.recv(4))[0]
-    # print('Done recieved: ', done)
-    # conn.sendall(struct.pack(">i", 1))
+
     # Ending rollout
     if i == max_steps - 1:
         conn.sendall(struct.pack(">i", 0))
+        done = 1
         return None, float(reward), int(done)
     # Continue Rollout
     else:
@@ -124,7 +115,7 @@ def compute_gaes(rewards, values, dones, gamma=0.99, lam=0.95):
     return advantages, returns
 
 
-def rollout(model, max_steps=1024):
+def rollout(model, max_steps=2048):
     rollout_buffer = {
         "InventoryObs": [],
         "BlocksObs": [],
@@ -134,12 +125,12 @@ def rollout(model, max_steps=1024):
         "jump": [],
         "item_use": [],
         "hotbar": [],
+        "pan_cam": [],
         "reward": [],
         "value": [],
         "log_prob": [],
         "done": []
     }  # obs, act, reward, value, act_log_prob, dones
-    print('Sending start State')
 
 
     obs = get_state() # Should return a tensor for obs
@@ -148,54 +139,34 @@ def rollout(model, max_steps=1024):
     for i in range(max_steps):
         if i % 500 == 0:
             print(i)
-        logits_dict, value = model(obs)
-
-        # print(f'movement logits {logits_dict['movement']}')
-        # print(f'jump logits {logits_dict['jump']}')
-        # print(f'item_use logits {logits_dict['item_use']}')
-        # print(f'hotbar logits {logits_dict['hotbar']}')
-        #
-        # print(f'movement shape {logits_dict["movement"].shape}')
-        # print(f'jump shape {logits_dict["jump"].shape}')
-        # print(f'item_use shape {logits_dict["item_use"].shape}')
-        # print(f'hotbar shape {logits_dict["hotbar"].shape}')
+        with torch.no_grad():
+            logits_dict, value = model(obs)
 
         logits_dict['jump'] = logits_dict['jump'].squeeze(-1)
-        print(f'Jump logits shape {logits_dict['jump'].shape}')
 
         movement_dist = Categorical(logits=logits_dict['movement'])
         jump_dist = Bernoulli(logits=logits_dict['jump'])
         item_use_dist = Categorical(logits=logits_dict['item_use'])
         hotbar_dist = Categorical(logits=logits_dict['hotbar'])
+        pan_cam_dist = Categorical(logits=logits_dict['pan_camera'])
 
         movement_act = movement_dist.sample()
         jump_act = jump_dist.sample()
         item_use_act = item_use_dist.sample()
         hotbar_act = hotbar_dist.sample()
-
-        print(f'Rollout movment shape {movement_act.shape}')
-        print(f'Rollout jump shape {jump_act.shape}')
-        print(f'Rollout item use shape {item_use_act.shape}')
-        print(f'Rollout hotbar shape {hotbar_act.shape}')
-        # print(f'movement: {movement_act.item()}')
-        # print(f'jump: {jump_act.item()}')
-        # print(f'item_use: {item_use_act.item()}')
-        # print(f'hotbar: {hotbar_act.item()}')
+        pan_cam_act = pan_cam_dist.sample()
 
         movement_log_prob = movement_dist.log_prob(movement_act)
         jump_log_prob = jump_dist.log_prob(jump_act)
         item_use_log_prob = item_use_dist.log_prob(item_use_act)
         hotbar_log_prob = hotbar_dist.log_prob(hotbar_act)
+        pan_cam_log_prob = pan_cam_dist.log_prob(pan_cam_act)
 
-        # print(f'Value before : {value}')
-        # print(f'Value shape : {value.shape}')
-
-        act_log_prob = movement_log_prob + jump_log_prob + item_use_log_prob + hotbar_log_prob
+        act_log_prob = movement_log_prob + jump_log_prob + item_use_log_prob + hotbar_log_prob + pan_cam_log_prob
 
         act_log_prob = act_log_prob.detach().cpu().item()
         value = value.detach().cpu().squeeze().item()
 
-        # print(f'Value: {value}')
         # logits_np = {
         #     "movement": logits_dict["movement"].detach().cpu().numpy(),
         #     "jump": logits_dict["jump"].detach().cpu().numpy(),
@@ -218,6 +189,7 @@ def rollout(model, max_steps=1024):
         rollout_buffer["jump"].append(jump_act.detach().cpu())
         rollout_buffer["item_use"].append(item_use_act.detach().cpu())
         rollout_buffer["hotbar"].append(hotbar_act.detach().cpu())
+        rollout_buffer["pan_cam"].append(pan_cam_act.detach().cpu())
         rollout_buffer["value"].append(value)
         rollout_buffer["log_prob"].append(act_log_prob)
 
@@ -225,8 +197,9 @@ def rollout(model, max_steps=1024):
         jump = int(jump_act.item())
         item_use = int(item_use_act.item())
         hotbar = int(hotbar_act.item())
+        pan_cam = int(pan_cam_act.item())
 
-        action = [movement, jump, item_use, hotbar]
+        action = [movement, jump, item_use, hotbar, pan_cam]
 
         next_obs, reward, done = take_step(action, max_steps, i)
 
@@ -240,8 +213,7 @@ def rollout(model, max_steps=1024):
             break
 
     # logits is dict, won't work
-    for key in ["InventoryObs", "BlocksObs", "EntitiesObs", "AgentInfoObs", "movement", "jump", "item_use", "hotbar", "log_prob", "value", "reward", "done"]:
-        print(f'Key {key}')
+    for key in ["InventoryObs", "BlocksObs", "EntitiesObs", "AgentInfoObs", "movement", "jump", "item_use", "hotbar", "pan_cam", "log_prob", "value", "reward", "done"]:
         rollout_buffer[key] = np.array(rollout_buffer[key], dtype=np.float32)
 
     advantages, returns = compute_gaes(rollout_buffer['reward'], rollout_buffer['value'], rollout_buffer['done'])
@@ -249,7 +221,30 @@ def rollout(model, max_steps=1024):
     rollout_buffer['advantage'] = advantages
     rollout_buffer['returns'] = returns
 
-    # print(rollout_buffer)
-
-
     return rollout_buffer, ep_reward
+
+
+def print_cuda_mem(tag=""):
+    if torch.cuda.is_available():
+        allocated = torch.cuda.memory_allocated() / (1024**2)
+        reserved  = torch.cuda.memory_reserved() / (1024**2)
+        print(f"[{tag}] CUDA Memory: allocated={allocated:.2f} MB, reserved={reserved:.2f} MB")
+    else:
+        print("No CUDA device available.")
+
+def plot_rewards(ep_rewards, window=20, path='graph'):
+    plt.figure(figsize=(10, 5))
+
+    # Moving average for smoothing
+    rewards_moving_avg = np.convolve(ep_rewards, np.ones(window) / window, mode="valid")
+
+    plt.plot(ep_rewards, label="Episode Reward", alpha=0.4)
+    plt.plot(range(window - 1, len(ep_rewards)), rewards_moving_avg, label=f"Moving Avg (window={window})", linewidth=2)
+
+    plt.xlabel("Episode")
+    plt.ylabel("Reward")
+    plt.title("Training Progress")
+    plt.legend()
+    plt.grid(True)
+    os.makedirs("graphs", exist_ok=True)
+    plt.savefig(f'graphs/{path}.png',dpi=300, bbox_inches='tight')

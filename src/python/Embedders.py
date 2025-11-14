@@ -30,9 +30,7 @@ class ItemEmbedder(nn.Module):
         scalar = item_info[..., 1:7].float()
         count_and_durability = item_info[..., 7:].float()
 
-        print(f'id: {id.shape}')
         id_embedding = self.id_embedding(id)
-        print('No failed')
         scalar_vec = self.scalar_mlp(scalar)
 
         # old comment (batch_size, 41, 66)

@@ -2,11 +2,11 @@ import socket
 import struct
 import time
 from PPOTrainer import PPOTrainer
-from utils import set_conn, rollout
+from utils import set_conn, rollout, print_cuda_mem, plot_rewards
 import state_pb2
 from ActorCritic import *
 import torch
-
+import os
 import numpy as np
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -14,6 +14,8 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 HOST = '127.0.0.1'
 PORT = 5000
 
+curr_best = float('-inf')
+ep_rewards = []
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind((HOST, PORT))
@@ -46,14 +48,98 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
     ppo = PPOTrainer(model)
 
-    while True:
+    load_path = "models/curr_test.pth"
+
+    if os.path.exists(load_path):
+        print(f"🔁 Loading checkpoint: {load_path}")
+        checkpoint = torch.load(load_path, map_location=DEVICE)
+
+        model_dict = model.state_dict()
+        pretrained_dict = checkpoint["model_state_dict"]
+
+        # Filter out weights that don't match shape (like shared_layers.0.weight)
+        filtered_dict = {}
+
+        for key, params in pretrained_dict.items():
+            if key in model_dict and params.shape == model_dict[key].shape:
+                filtered_dict[key] = params
+            elif key in model_dict:
+                with torch.no_grad():
+                    old_params = params
+                    new = model_dict[key].clone()
+
+                    slices = tuple(slice(0, min(o, n)) for o, n in zip(old_params.shape, new.shape))
+                    new[slices] = old_params[slices]
+
+                    filtered_dict[key] = new
+
+
+        skipped_keys = set(pretrained_dict.keys()) - set(filtered_dict.keys()) # Should be empty now
+
+
+        print("✅ Loaded:", filtered_dict.keys())
+        print("⚠️   Skipped:", skipped_keys)
+
+        model_dict.update(filtered_dict)
+        model.load_state_dict(model_dict, strict=False)
+
+        if "policy_optimizer_state_dict" in checkpoint:
+            try:
+                ppo.policy_optimizer.load_state_dict(checkpoint["policy_optimizer_state_dict"])
+                ppo.value_optimizer.load_state_dict(checkpoint["value_optimizer_state_dict"])
+
+                # VERIFY optimizer shapes match
+                # for old_state, new_param in zip(
+                #         checkpoint["policy_optimizer_state_dict"]["state"].values(),
+                #         model.parameters()):
+                #     for k, v in old_state.items():
+                #         if isinstance(v, torch.Tensor) and v.shape != new_param.shape:
+                #             raise RuntimeError("Optimizer state tensor shape mismatch")
+
+                print("✅ Loaded optimizer state!")
+
+            except Exception as e:
+                print("⚠️ Optimizer state incompatible — resetting optimizer.")
+                ppo.policy_optimizer = torch.optim.Adam(ppo.policy_optimizer.param_groups[0]["params"])
+                ppo.value_optimizer = torch.optim.Adam(ppo.value_optimizer.param_groups[0]["params"])
+
+        # curr_best = checkpoint['best_reward']
+        curr_best = float('-inf')
+        ep_rewards.append(curr_best)
+
+        print(f"✅ Loaded model! Best reward: {curr_best}")
+
+    else:
+        print("⚠️ No checkpoint found, training from scratch")
+
+
+    for i in range(1000):
+        print("Loop ", i)
         conn.sendall(struct.pack(">i", 1))
+        print_cuda_mem("Before Rollout")
         train_data, ep_reward = rollout(model)
+        ep_rewards.append(ep_reward)
+        print_cuda_mem("After Rollout")
+
+        if ep_reward >= curr_best:
+            curr_best = ep_reward
+            save_path = f"models/model_best_more_block_info{curr_best:.2f}.pth"
+            torch.save({
+                "model_state_dict": model.state_dict(),
+                "policy_optimizer_state_dict": ppo.policy_optimizer.state_dict(),
+                "value_optimizer_state_dict": ppo.value_optimizer.state_dict(),
+                "rewards": ep_rewards,
+                "best_reward": curr_best,
+                "iter": i,
+            }, save_path)
+
+            print(f" ✅ Saved best model → {save_path} with reward {curr_best}")
+
+        plot_rewards(ep_rewards, path=f'model_{i}', window=1)
 
         permute_idxs = np.random.permutation(len(train_data['InventoryObs']))
 
         # Are already tensors
-        # print(f'InventoryObs: {train_data["InventoryObs"]}')
 
         obs = {
             'Inventory' : torch.tensor(train_data['InventoryObs'][permute_idxs], dtype=torch.float32, device=DEVICE),
@@ -62,113 +148,22 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             'AgentInfo' : torch.tensor(train_data['AgentInfoObs'][permute_idxs], dtype=torch.float32, device=DEVICE)
         }
 
-        print(f'obs: {obs}')
-
         act = {
             'movement'  : torch.tensor(train_data['movement'][permute_idxs], dtype=torch.long, device=DEVICE),
             'jump'      : torch.tensor(train_data['jump'][permute_idxs], dtype=torch.float32, device=DEVICE),
             'item_use'  : torch.tensor(train_data['item_use'][permute_idxs], dtype=torch.long, device=DEVICE),
-            'hotbar'    : torch.tensor(train_data['hotbar'][permute_idxs], dtype=torch.long, device=DEVICE)
+            'hotbar'    : torch.tensor(train_data['hotbar'][permute_idxs], dtype=torch.long, device=DEVICE),
+            'pan_cam'   : torch.tensor(train_data['pan_cam'][permute_idxs], dtype=torch.long, device=DEVICE)
         }
 
         advantages = torch.tensor(train_data['advantage'][permute_idxs], dtype=torch.float32, device=DEVICE)
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         log_probs = torch.tensor(train_data['log_prob'][permute_idxs], dtype=torch.float32, device=DEVICE)
         returns = torch.tensor(train_data['returns'][permute_idxs], dtype=torch.float32, device=DEVICE)
+        print_cuda_mem("Before Training")
 
         ppo.train_policy(obs, act, log_probs, advantages)
         ppo.train_value(obs, returns)
         print('********************************')
         print('****** Completed Training ******')
         print('********************************')
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    # with conn:
-    #     print("Connected by", addr)
-    #     i = 0
-    #     while True:
-    #         size_bytes = conn.recv(4)
-    #         if not size_bytes:
-    #             print("Java closed connection, exiting loop.")
-    #             break
-    #
-    #         size = struct.unpack(">i", size_bytes)[0]
-    #
-    #         print("Received ", size, "bytes")
-    #
-    #         buffer = bytearray()
-    #         while len(buffer) < size:
-    #             chunk = conn.recv(size - len(buffer))
-    #             if not chunk: break
-    #             buffer.extend(chunk)
-    #
-    #         if len(buffer) != size:
-    #             print("Didn't receive exactly ", len(buffer), "bytes")
-    #             print("Shutting down...")
-    #
-    #         state = state_pb2.State()
-    #         state.ParseFromString(buffer)
-    #
-    #         action = state_pb2.Action()
-    #
-    #         agentInfo = [
-    #             value for value in state.agentInfo
-    #         ]
-    #
-    #         agentInventory = [
-    #             [ value for value in row.values ] for row in state.inventory.rows
-    #         ]
-    #
-    #         nearbyEntities = [
-    #             [ value for value in row.values ] for row in state.nearbyEntities.rows
-    #         ]
-    #
-    #         nearbyBlocks = [
-    #             [ value for value in row.values ] for row in state.nearbyBlocks.rows
-    #         ]
-    #
-    #         print("Agent Info: ", agentInfo)
-    #         print()
-    #         print("Agent Inventory: ", agentInventory)
-    #         print()
-    #         print("Nearby Entities: ", nearbyEntities)
-    #         print()
-    #         print("Nearby Blocks: ", nearbyBlocks)
-    #         print()
-    #
-    #
-    #         action.actions.extend([0.5, 0, 1, 0, 0.3])
-    #         out = action.SerializeToString()
-    #
-    #         conn.sendall(struct.pack(">i", len(out)))
-    #         conn.sendall(out)
-    #
-    #         if i >= 100:
-    #             print("Thats enough, ending connection...")
-    #             break
-    #
-    #         i += 1

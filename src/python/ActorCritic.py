@@ -3,6 +3,8 @@ from torch import nn
 from Embedders import ItemEmbedder, BlockEmbedder, EntityEmbedder
 from Transformers import MinecraftTransformer
 
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
 class ActorCriticNetwork(nn.Module):
     def __init__(self, agent_info_dim, num_items, num_blocks, num_entities):
         super().__init__()
@@ -11,13 +13,25 @@ class ActorCriticNetwork(nn.Module):
         self.block_embedder = BlockEmbedder(num_blocks)
         self.entity_embedder = EntityEmbedder(num_entities)
 
-        embed_dim = 64
-        self.item_transformer = MinecraftTransformer(embed_dim)
-        #  * ( (5 * 2) + 1) * ( (3 * 2) + 1) * ( (5 * 2) + 1 )
-        self.block_transformer = MinecraftTransformer(embed_dim)
-        self.entity_transformer = MinecraftTransformer(embed_dim)
+        self.embed_dim = 64
 
-        obs_space_size = agent_info_dim + 41 * embed_dim + embed_dim* ( (5 * 2) + 1) * ( (3 * 2) + 1) * ( (5 * 2) + 1 ) + 10 * embed_dim
+        # coreRadius = 5
+        # fwdRadius = 10
+        # sliceWidth = 5
+        # verticalRadius = 3
+        #
+        # coreRows = ((coreRadius * 2) + 1) * ((verticalRadius * 2) + 1) * ((coreRadius * 2) + 1)
+        # sliceRows = (sliceWidth * 2 + 1) * (verticalRadius * 2 + 1) * (fwdRadius)
+        # rows = coreRows + sliceRows
+        #
+        # amt_of_blocks_recieved = coreRows + sliceRows
+
+        # self.item_transformer = MinecraftTransformer(embed_dim)
+        #  * ( (5 * 2) + 1) * ( (3 * 2) + 1) * ( (5 * 2) + 1 )
+        self.block_transformer = MinecraftTransformer(self.embed_dim)
+        # self.entity_transformer = MinecraftTransformer(embed_dim)
+
+        obs_space_size = (agent_info_dim + 0) + 41 * self.embed_dim + self.embed_dim + 10 * self.embed_dim
 
         self.shared_layers = nn.Sequential(
             nn.Linear(obs_space_size, 256),
@@ -32,6 +46,7 @@ class ActorCriticNetwork(nn.Module):
         self.jump_policy = nn.Linear(128, 1)        # Do or don't jump
         self.item_use_policy = nn.Linear(128, 3)    # Left click (attack), right click (use item), neither
         self.hotbar_policy = nn.Linear(128, 9)      # Active hotbar slot
+        self.pan_camera = nn.Linear(128, 5)         # Pan camera up, down, left, right
 
         self.value_layer = nn.Sequential(
             nn.Linear(128, 64),
@@ -41,16 +56,36 @@ class ActorCriticNetwork(nn.Module):
 
 
     def obs_preprocessing(self, obs):
-        print(obs['Inventory'].shape)
+        # self.debug_tensor("Inventory", obs["Inventory"])
+        # self.debug_tensor("Blocks", obs["Blocks"])
+        # self.debug_tensor("Entities", obs["Entities"])
+        # self.debug_tensor("AgentInfo", obs["AgentInfo"])
+
         item_embedding = self.item_embedder(obs['Inventory'])
         block_embedding = self.block_embedder(obs['Blocks'])
         entity_embedding = self.entity_embedder(obs['Entities'])
         agent_info = obs['AgentInfo']
+        if len(agent_info.shape) == 1:
+            agent_info = agent_info.unsqueeze(0)
 
-        print(f'item_embeding shape {item_embedding.shape}')
-        print(f'block_embedding shape {block_embedding.shape}')
-        print(f'entity_embedding shape {entity_embedding.shape}')
-        print(f'agent_info shape {agent_info.shape}')
+        look_slice = agent_info[:, -9:]
+        agent_info = agent_info[:, :-9]
+
+        look_type = look_slice[:, 0].long()
+        looking_at_info = look_slice[:, 1:]
+
+
+        look_embeds = []
+        for b in range(agent_info.size(0)):
+            type = int(look_type[b].item())
+            if type == 0:
+                look_embeds.append(torch.zeros(self.embed_dim, device=DEVICE))
+            elif type == 1:
+                look_embeds.append(self.block_embedder(looking_at_info[b:b+1, :4]).squeeze(0))
+            else:
+                look_embeds.append(self.entity_embedder(looking_at_info[b:b+1]).squeeze(0))
+
+        look_embeds = torch.stack(look_embeds, dim=0)
 
         if len(item_embedding.shape) == 2:
             item_embedding = item_embedding.unsqueeze(0)
@@ -58,22 +93,12 @@ class ActorCriticNetwork(nn.Module):
             block_embedding = block_embedding.unsqueeze(0)
         if len(entity_embedding.shape) == 2:
             entity_embedding = entity_embedding.unsqueeze(0)
-        if len(agent_info.shape) == 1:
-            agent_info = agent_info.unsqueeze(0)
 
-        print(f'agent_info shape after {agent_info.shape}')
-        print(f'item_embedding shape after {item_embedding.shape}')
-        print(f'block_embedding shape after {block_embedding.shape}')
-        print(f'entity_embedding shape after {entity_embedding.shape}')
 
         item_x = torch.flatten(item_embedding, start_dim=1)
         block_x = self.block_transformer(block_embedding)
         entity_x = torch.flatten(entity_embedding, start_dim=1)
 
-        # print(item_x.shape)
-        # print(block_x.shape)
-        # print(entity_x.shape)
-        # print(agent_info.shape)
 
         return torch.cat([agent_info, item_x, block_x, entity_x], dim=-1)
 
@@ -83,12 +108,14 @@ class ActorCriticNetwork(nn.Module):
         jump_policy_logits = self.jump_policy(x)
         item_use_policy_logits = self.item_use_policy(x)
         hotbar_policy_logits = self.hotbar_policy(x)
+        pan_camera_logits = self.pan_camera(x)
 
         policy_logits = {
             'movement': movement_policy_logits,
             'jump': jump_policy_logits,
             'item_use': item_use_policy_logits,
             'hotbar': hotbar_policy_logits,
+            'pan_camera' : pan_camera_logits
         }
 
         return policy_logits
@@ -111,11 +138,20 @@ class ActorCriticNetwork(nn.Module):
 
     def forward(self, obs):
         n_obs = self.obs_preprocessing(obs)
-        # print(n_obs.shape)
-        # print(n_obs)
+        if torch.isnan(n_obs).any() or torch.isinf(n_obs).any():
+            print("❌ NaN or Inf detected in observation BEFORE network")
+
         x = self.shared_layers(n_obs)
 
         policy_logits = self.get_policy_logits(x)
         value = self.value_layer(x)
 
         return policy_logits, value
+
+    def debug_tensor(self, name, t):
+        if torch.isnan(t).any() or torch.isinf(t).any():
+            print(f"❌ NaN or Inf detected in {name}")
+            print("   min:", torch.nanmin(t))
+            print("   max:", torch.nanmax(t))
+            print("   values:", t)
+            raise ValueError(f"Invalid values in {name}")

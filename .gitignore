@@ -1,0 +1,34 @@
+### Build + Gradle ###
+.gradle/
+build/
+out/
+run/
+
+### Logs ###
+*.log
+debug.log
+latest.log
+
+### IntelliJ IDEA ###
+.idea/
+*.iml
+*.iws
+
+### VSCode (optional) ###
+.vscode/
+
+### Python ###
+__pycache__/
+*.pyc
+*.pyo
+
+### ML Models + Training Outputs ###
+src/python/models/
+src/python/graphs/
+*.pth
+*.png
+
+### OS junk ###
+.DS_Store
+Thumbs.db
+

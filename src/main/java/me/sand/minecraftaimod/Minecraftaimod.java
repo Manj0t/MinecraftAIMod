@@ -391,11 +391,11 @@ public class Minecraftaimod implements ModInitializer {
             double current_dist_to_wood = Math.sqrt(Math.pow(currentPos.x - nearestWood.getX(), 2) + Math.pow(currentPos.z - nearestWood.getZ(), 2));
             double prev_dist_to_wood = Math.sqrt(Math.pow(lastPos.x - nearestWood.getX(), 2) + Math.pow(lastPos.z - nearestWood.getZ(), 2));
             double diff = (prev_dist_to_wood - current_dist_to_wood);
-            if(diff * 2.0 > 0.01)
+            if(diff * 2.0 > 0.01 && isNew)
                 reward += diff * 2.0;
 
-            if(current_dist_to_wood <= 3.0){
-                visitedWood.add(new Tuple3(nearestWood.getX(), 0, nearestWood.getZ()));
+            if(current_dist_to_wood <= 2.5){
+                visitedWood.add(new Tuple3(nearestWood.getX(), nearestWood.getY(), nearestWood.getZ()));
                 nearestWood = null;
             }
         }
@@ -1031,14 +1031,14 @@ public class Minecraftaimod implements ModInitializer {
                     BlockState state = agent.getEntityWorld().getBlockState(pos);
 
                     boolean isLog = state.isIn(BlockTags.LOGS);
-                    if(isLog && !visitedWood.contains(new Tuple3(pos.getX(), 0, pos.getZ()))) {
+                    if(isLog && !visitedWood.contains(new Tuple3(pos.getX(), pos.getY(), pos.getZ()))) {
                         double dist_to_block = Math.sqrt(Math.pow((agentBlockX - pos.getX()), 2) + Math.pow((agentBlockY - pos.getY()), 2) + Math.pow((agentBlockZ - pos.getZ()), 2));
                         if(nearestWood == null){
-                            nearestWood = new BlockPos(x, 0, z); // exclude y to not reward jumping
+                            nearestWood = new BlockPos(x, pos.getY(), z); // exclude y to not reward jumping
                         }
                         else {
                             double current_log_dist = Math.sqrt(Math.pow(agentBlockX - nearestWood.getX(), 2) + Math.pow(agentBlockY - nearestWood.getY(), 2) + Math.pow(agentBlockZ - nearestWood.getZ(), 2));
-                            if(dist_to_block < current_log_dist) nearestWood = new BlockPos(x, 0, z);
+                            if(dist_to_block < current_log_dist) nearestWood = new BlockPos(x, pos.getY(), z);
                         }
                     }
 

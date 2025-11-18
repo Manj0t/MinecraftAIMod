@@ -1,6 +1,3 @@
-/start_training EmpireCreator
-/tp worldspawn
-/tick rate 120
 /save_state
 /tick rate 120
 /start_training EmpireCreator
@@ -47,4 +44,7 @@
 /start_training Steve
 /tick rate 40
 /start_training Steve
+/setworldspawn
+/start_training Steve
+/tick rate 40
 /setworldspawn

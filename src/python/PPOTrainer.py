@@ -3,7 +3,7 @@ from torch import nn
 from torch import optim
 from torch.distributions import Categorical, Bernoulli
 
-batch_size = 128
+batch_size = 512
 
 
 class PPOTrainer():
@@ -94,12 +94,12 @@ class PPOTrainer():
                 )
                 # ignore for now, may change later so easier to change
                 entropy_bonus = (
-                    movement_dist.entropy().mean() * 0.005 +
-                    jump_dist.entropy().mean() * 0.002 +
-                    item_use_dist.entropy().mean() * 0.001+
-                    hotbar_dist.entropy().mean() * 0.001+
-                    pan_cam_dist.entropy().mean() * 0.003
-                    )
+                    movement_dist.entropy().mean() +
+                    jump_dist.entropy().mean() +
+                    item_use_dist.entropy().mean() +
+                    hotbar_dist.entropy().mean() +
+                    pan_cam_dist.entropy().mean()
+                    ) * 0.01
 
                 policy_ratio = torch.exp(new_log_probs - batch_old_log_probs)
                 clipped_ratio = policy_ratio.clamp(1 - self.ppo_clip_val, 1 + self.ppo_clip_val)
@@ -115,7 +115,7 @@ class PPOTrainer():
 
                 value_loss = ((batch_returns - value) ** 2).mean()
 
-                loss = policy_loss + 0.5 * value_loss - entropy_bonus
+                loss = policy_loss + 0.25 * value_loss - entropy_bonus
 
                 loss.backward()
                 self.optimizer.step()

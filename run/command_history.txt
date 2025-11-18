@@ -1,50 +1,50 @@
-/stop_training
+/start_training EmpireCreator
+/tp worldspawn
+/tick rate 120
+/save_state
+/tick rate 120
+/start_training EmpireCreator
+/tick rate 120
+/start_training EmpireCreator
+/tick rate 120
+/start_training EmpireCreator
+/tick rate 120
+/setworldspawn
+/save_state
+/start_training EmpireCreator
+/tick rate 120
+/start_training EmpireCreator
+/tick rate 120
 /start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/time set day
-/weather clear
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/stop_training
-/start_training Steve
-/tp Steve
-/start_training Steve
-/tp Steve
-/stop_training
-/start_training Steve
+/setworldspawn
 /tp Steve ~ ~ ~
-/stop_training
+/setworldspawn
+/start_training Steve
+/setworldspawn
+/start_training Steve
 /tp Steve ~ ~ ~
 /start_training Steve
 /tp Steve ~ ~ ~
 /start_training Steve
+/tp Steve ~ ~ ~
+/setworldspawn
+/start_training Steve
+/tick rate 120
+/tick rate 20
+/start_training Steve
 /stop_training
+/start_training Steve
+/tick rate 50
+/start_training Steve
+/tick rate 50
+/tick rate 30
+/tick rate 40
+/save_state
+/setworldspawn
+/tick rate 40
+/start_training Steve
+/save_state
+/start_training Steve
+/tick rate 40
+/start_training Steve
+/setworldspawn

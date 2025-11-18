@@ -1,12 +1,13 @@
 package me.sand.minecraftaimod;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
-import me.sand.minecraftaimod.protobuf.StateOuterClass;
+import me.sand.minecraftaimod.protobuf.*;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.Blocks;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.AttributeModifiersComponent;
 import net.minecraft.component.type.EquippableComponent;
@@ -52,12 +53,6 @@ import static net.minecraft.server.command.CommandManager.argument;
 import static net.minecraft.server.command.CommandManager.literal;
 
 
-import me.sand.minecraftaimod.protobuf.State;
-import me.sand.minecraftaimod.protobuf.Matrix;
-import me.sand.minecraftaimod.protobuf.Row;
-import me.sand.minecraftaimod.protobuf.Action;
-
-
 public class Minecraftaimod implements ModInitializer {
 
     public static final Logger LOGGER = LoggerFactory.getLogger("collect-state-info");
@@ -77,13 +72,15 @@ public class Minecraftaimod implements ModInitializer {
     private volatile boolean sendReward = false;
     private volatile boolean recieveAction = false;
     private volatile boolean waitForNextRollout = false;
+    private volatile boolean resetPlayer = false;
 
     private final Map<Integer, Runnable> movementActions = new HashMap<>();
     private final Map<Integer, Runnable> panCam = new HashMap<>();
 //    private HashSet<Point> visitedRegion = new HashSet<>();
 
     private int currentHand = 0;
-    private double speed = 0.12;
+    private double speed = 0.24;
+    double maxSpeed = 0.25;
 
     Vec3d lastPos = null;
     Double lastY = null;
@@ -100,6 +97,8 @@ public class Minecraftaimod implements ModInitializer {
 
     int loop = 0;
     boolean isLavaArea = false;
+
+    boolean spawnPlayer = false;
 
     @Override
     public void onInitialize() {
@@ -141,7 +140,7 @@ public class Minecraftaimod implements ModInitializer {
                                             output.writeInt(numEntities);
                                             output.flush();
 
-                                            waitForNextRollout = true;
+                                            resetPlayer = true;
 //                                            out.println("exit");
 //                                            System.out.println("Python replied: " + in.readLine());
 
@@ -220,13 +219,21 @@ public class Minecraftaimod implements ModInitializer {
          */
         ServerTickEvents.END_SERVER_TICK.register(server -> {
                     if (!collecting) return; // only run if training started
+
+                    if(spawnPlayer){
+                        server.getCommandManager().parseAndExecute(server.getCommandSource(), "/player " + agentName + " spawn");
+                        spawnPlayer = false;
+                        return;
+                    }
                     if (agent == null && agentName != null) {
                         for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
                             if (agentName.equals(player.getName().getString().toLowerCase())) {
                                 agent = player;
                                 lastPos = null;
                                 world = agent.getEntityWorld();
-                                lastY = agent.getY();
+                                lastY = null;
+                                visitedRegion.clear();
+                                visitedWood.clear();
                                 server.getCommandManager().parseAndExecute(server.getCommandSource(), "/gamemode survival " + agentName);
                                 System.out.println("found");
                                 break;
@@ -235,36 +242,34 @@ public class Minecraftaimod implements ModInitializer {
                         if (agent == null) return;
                     }
                     // Agent Position Information
-                    if(!server.getPlayerManager().getPlayerList().contains(agent)){
-                        penalty -= 10.0f;
-        //                                done_tag = 1;
-                        server.getCommandManager().parseAndExecute(server.getCommandSource(), "/player " + agentName + " spawn");
-                        agent = null;
+                    if (resetPlayer) {
+                        server.getCommandManager().parseAndExecute(server.getCommandSource(), "/player " + agentName + " kill");
+                        resetPlayer = false;
+                        waitForNextRollout = true;
                         return;
                     }
-
                     if(waitForNextRollout) {
                         lastPos = null;
                         try {
                             System.out.println("INFO: Waiting for next rollout");
-                            server.getCommandManager().parseAndExecute(server.getCommandSource(), "/player " + agentName + " kill");
+
                             int startRollout = input.readInt();
-                            server.getCommandManager().parseAndExecute(server.getCommandSource(), "/player " + agentName + " spawn");
+                            spawnPlayer = true;
                             server.getCommandManager().parseAndExecute(server.getCommandSource(), "/time set day");
                             visitedRegion.clear();
                             visitedWood.clear();
                             lastY = null;
                             lastPos = null;
-                            loop += 1;
-                            if(loop % 3 == 0 ){
-                                if(isLavaArea)
-                                    server.getCommandManager().parseAndExecute(server.getCommandSource(), "/setworldspawn 194 74 -208");
-                                else
-                                    server.getCommandManager().parseAndExecute(server.getCommandSource(), "/setworldspawn 460 95 -225");
-
-                                isLavaArea = !isLavaArea;
-                            }
-//                            System.out.println("startRollout: " + startRollout);
+                            //                            loop += 1;
+                            //                            if(loop % 5 == 0 ){
+                            //                                if(isLavaArea)
+                            //                                    server.getCommandManager().parseAndExecute(server.getCommandSource(), "/setworldspawn 194 74 -208");
+                            //                                else
+                            //                                    server.getCommandManager().parseAndExecute(server.getCommandSource(), "/setworldspawn 460 95 -225");
+                            //
+                            //                                isLavaArea = !isLavaArea;
+                            //                            }
+                            //                            System.out.println("startRollout: " + startRollout);
                             if(startRollout > 0) {
                                 waitForNextRollout = false;
                                 sendState = true;
@@ -272,7 +277,18 @@ public class Minecraftaimod implements ModInitializer {
                         }catch (IOException e) {
                             System.err.println("Error reading rollout command: " + e.getMessage());
                         }
+                        agent = null;
+                        return;
                     }
+
+                    if(!server.getPlayerManager().getPlayerList().contains(agent)){
+                        penalty = -10.0f;
+                        //                                done_tag = 1;
+                        server.getCommandManager().parseAndExecute(server.getCommandSource(), "/player " + agentName + " spawn");
+                        agent = null;
+                        return;
+                    }
+
                     if (sendState) {
                         sendStateInfo(server);
                         sendState = false;
@@ -305,9 +321,10 @@ public class Minecraftaimod implements ModInitializer {
                         try{
                             float reward = (float) getReward(actions) + penalty;
 //                            System.out.println("Reward: " + reward);
+                            int done_tag = penalty == -10.0f ? 1 : 0;
                             penalty = 0;
 
-                            int done_tag = 0;
+
                             output.writeFloat(reward);
                             output.writeInt(done_tag);
                             output.flush();
@@ -320,7 +337,7 @@ public class Minecraftaimod implements ModInitializer {
                             if(continueRollout == 1){
                                 sendState = true;
                             } else{
-                                waitForNextRollout = true;
+                                resetPlayer = true;
                             }
 
 
@@ -337,76 +354,96 @@ public class Minecraftaimod implements ModInitializer {
 
     private double getReward(List<Float> actions) {
         Vec3d currentPos = new Vec3d(agent.getX(), agent.getY(), agent.getZ());
-        int REGION_SIZE = 3;
+        int REGION_SIZE = 2;
 
-        // initialize at first step
-        if (lastPos == null || lastY == null) {
+        if (lastPos == null) {
             lastPos = currentPos;
-            lastY = currentPos.y;
             agentPrevhealth = agent.getHealth();
             return 0.0;
         }
 
-        // ============================
-        //   Encourage Movement
-        // ============================
+        double reward = 0.0;
+
         double dx = currentPos.x - lastPos.x;
         double dz = currentPos.z - lastPos.z;
+        double dist = Math.sqrt(dx*dx + dz*dz);
+        // ------------------------
+        //  No movement PENALTY
+        // ------------------------
+        if (Math.abs(dx) < 0.02 && Math.abs(dz) < 0.02)
+            reward -= 0.01;
 
-        double reward = 0.0;
-        double horizontalDist = Math.sqrt(dx * dx + dz * dz);
-        reward += horizontalDist * 0.1;
+        // ONLY reward if dist > threshold => avoids wall-collisions giving reward
+//        if (dist > 0.05)
+//            reward += dist * 1.0;
 
-        // ============================
-        //   Exploration by region
-        // ============================
-        int regionX = (int) Math.floor(currentPos.x / REGION_SIZE);
-        int regionY =  (int) Math.floor(currentPos.y / REGION_SIZE);
-        int regionZ = (int) Math.floor(currentPos.z / REGION_SIZE);
+        // ------------------------
+        // Region explor
+        // ------------------------
+        int rx = (int)Math.floor(currentPos.x / REGION_SIZE);
+        int ry = (int)Math.floor(currentPos.y / REGION_SIZE);
+        int rz = (int)Math.floor(currentPos.z / REGION_SIZE);
 
-        boolean haveVisitedRegion = visitedRegion.add(new Tuple3(regionX, regionY, regionZ));
+        boolean isNew = visitedRegion.add(new Tuple3(rx, 0, rz));
+        if (isNew) reward += 0.8;
 
-        // Apply bonus for traveling to new region
-        reward += !haveVisitedRegion ? 0.3 : 0;
-
-        if (horizontalDist < 0.01)
-            reward -= 0.05;  // Discourage standing still
-
-        // =======================================
-        //   Move toward nearest wood (if known)
-        // =======================================
         if(nearestWood != null) {
-            double current_dist_to_wood = Math.sqrt(Math.pow(currentPos.x - nearestWood.getX(), 2) + Math.pow(currentPos.y - nearestWood.getY(), 2) + Math.pow(currentPos.z - nearestWood.getZ(), 2));
-            double prev_dist_to_wood = Math.sqrt(Math.pow(lastPos.x - nearestWood.getX(), 2) + Math.pow(lastY - nearestWood.getY(), 2) + Math.pow(lastPos.z - nearestWood.getZ(), 2));
+            double current_dist_to_wood = Math.sqrt(Math.pow(currentPos.x - nearestWood.getX(), 2) + Math.pow(currentPos.z - nearestWood.getZ(), 2));
+            double prev_dist_to_wood = Math.sqrt(Math.pow(lastPos.x - nearestWood.getX(), 2) + Math.pow(lastPos.z - nearestWood.getZ(), 2));
+            double diff = (prev_dist_to_wood - current_dist_to_wood);
+            if(diff * 2.0 > 0.01)
+                reward += diff * 2.0;
 
-            reward += (prev_dist_to_wood - current_dist_to_wood) * 2.0;
+            if(current_dist_to_wood <= 3.0){
+                visitedWood.add(new Tuple3(nearestWood.getX(), 0, nearestWood.getZ()));
+                nearestWood = null;
+            }
         }
 
-        // ============================
-        //    Jump discouragement
-        // ============================
-        if (wasOnGround && actions.get(1) == 1) {
-            reward -= 5.0;
-            wasOnGround = false;
-        }
-        if(agent.isOnGround()) {
-            lastY = agent.getY();
+
+
+        // forward movement reward
+        Vec3d move = currentPos.subtract(lastPos);
+        Vec3d moveFlat = new Vec3d(move.x, 0, move.z);
+
+        Vec3d forward = agent.getRotationVec(1F);
+        Vec3d forwardFlat = new Vec3d(forward.x, 0, forward.z).normalize();
+
+        double forwardProgress = forwardFlat.dotProduct(moveFlat);
+
+        boolean jumped = actions.get(1) > 0.5;
+        boolean onGround = agent.isOnGround();
+
+
+        if (!jumped && forwardProgress > 0.02 && onGround) {
+            reward += forwardProgress * 2.0;
         }
 
-        // ============================
-        //     Penalize fall damage
-        // ============================
-        if (agent.fallDistance > 2.5) {
-            reward -= agent.fallDistance * 1.5;
+// Penalize ANY airtime
+        if (!onGround) {
+            reward -= 0.1;   // light penalty
+        }
+        if (actions.get(1) > 0.5)
+            reward -= 0.5;
+
+        boolean inLava = agent.isInLava();
+
+        if (inLava || agent.isOnFire()) {
+            reward -= 1.0;
         }
 
-        if(agent.getHealth() < agentPrevhealth){
-            reward -= 3.0;
-        }
+        // ------------------------
+        // SMALL HEALTH LOSS PENALTY
+        // ------------------------
+        if (agent.getHealth() < agentPrevhealth)
+            reward -= 1.0;
 
+        // ------------------------
+        // SAVE LAST
+        // ------------------------
         lastPos = currentPos;
         agentPrevhealth = agent.getHealth();
-        return reward;   // encourage movement, penalize sitting
+        return reward;
     }
 
     private void applyAction(List<Float> actions) {
@@ -421,8 +458,8 @@ public class Minecraftaimod implements ModInitializer {
             movementAction.run();
         }
 
-        if(jump > 0){
-            jump();
+        if(jump > 0 && agent.isOnGround()){
+            agent.jump();
         }
 
         // 2 is don't use item
@@ -460,10 +497,10 @@ public class Minecraftaimod implements ModInitializer {
             currentHand = hotbar_idx;
         }
 
-//        Runnable pan_cam_action = panCam.get(pan_id);
-//        if (pan_cam_action != null) {
-//            pan_cam_action.run();
-//        }
+        Runnable pan_cam_action = panCam.get(pan_id);
+        if (pan_cam_action != null) {
+            pan_cam_action.run();
+        }
 
 
     }
@@ -483,44 +520,82 @@ public class Minecraftaimod implements ModInitializer {
         agent.setPitch(Math.min(agent.getPitch() + 3f, 89f)); // can't look past straight down
     }
 
+//    private void moveForward(){
+//        Vec3d lookDir = agent.getRotationVec(1.0F);
+//        agent.setVelocity(lookDir.x * speed, agent.getVelocity().y, lookDir.z * speed);
+//    }
+//
+//    private void moveBackward(){
+//        Vec3d lookDir = agent.getRotationVec(1.0F);
+//        agent.setVelocity(-lookDir.x * speed, agent.getVelocity().y, -lookDir.z * speed);
+//    }
+//
+//    private void moveRight(){
+//        Vec3d lookDir = agent.getRotationVec(1.0F);
+//        agent.setVelocity(-lookDir.z * speed, agent.getVelocity().y, lookDir.x * speed);
+//    }
+//
+//    private void moveLeft(){
+//        Vec3d lookDir = agent.getRotationVec(1.0F);
+//        agent.setVelocity(lookDir.z * speed, agent.getVelocity().y, -lookDir.x * speed);
+//    }
+
+    private void clip_velocity(){
+        Vec3d vel = agent.getVelocity();
+        double horizSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+
+        if(horizSpeed > maxSpeed){
+            double scaled = maxSpeed / horizSpeed;
+            Vec3d new_vel = new Vec3d(vel.x * scaled, vel.y, vel.z * scaled);
+            agent.setVelocity(new_vel);
+        }
+    }
+
     private void moveForward(){
         Vec3d lookDir = agent.getRotationVec(1.0F);
 
         Vec3d movement = new Vec3d(lookDir.x * speed, 0, lookDir.z * speed);
-
         agent.addVelocity(movement);
+
+        clip_velocity();
     }
 
     private void moveBackward(){
         Vec3d lookDir = agent.getRotationVec(1.0F);
 
         Vec3d movement = new Vec3d(lookDir.x * -speed, 0, lookDir.z * -speed);
-
         agent.addVelocity(movement);
+
+        clip_velocity();
     }
 
     private void moveRight(){
         Vec3d lookDir = agent.getRotationVec(1.0F);
 
         Vec3d movement = new Vec3d(-lookDir.z * speed, 0, lookDir.x * speed);
-
         agent.addVelocity(movement);
+
+        clip_velocity();
     }
 
     private void moveLeft(){
         Vec3d lookDir = agent.getRotationVec(1.0F);
 
         Vec3d movement = new Vec3d(lookDir.z * speed, 0, -lookDir.x * speed);
-
         agent.addVelocity(movement);
+
+        clip_velocity();
     }
 
-    private void jump(){
-        if (agent.isOnGround()) {
-            agent.addVelocity(0, 0.5, 0);  // vanilla jump power
-            wasOnGround = true;
-        }
-    }
+
+//    private void jump(){
+//        if (agent.isOnGround()) {
+//            Vec3d vel = agent.getVelocity();
+//            agent.setVelocity(vel.x, 0.5, vel.z);
+//            wasOnGround = true;
+//
+//        }
+//    }
 
     private void updateHand(int jump){
 
@@ -536,8 +611,7 @@ public class Minecraftaimod implements ModInitializer {
         double[][] nearbyEntities = getNearbyEntities();
 
         // Get nearby Block information
-        double[][] nearbyBlocks = getNearbyBlocks();
-
+        double[][][] nearbyBlocks = getNearbyBlocks();
 
         // prolly could hard code this into the function?
         List<Double> agentInfoList = new ArrayList<>(agentInfo.length);
@@ -563,13 +637,17 @@ public class Minecraftaimod implements ModInitializer {
             nearbyEntitiesMatrix.addRows(rowBuilder);
         }
 
-        Matrix.Builder nearbyBlocksMatrix = Matrix.newBuilder();
-        for(double[] row : nearbyBlocks) {
-            Row.Builder rowBuilder = Row.newBuilder();
-            for(double value : row) {
-                rowBuilder.addValues(value);
+        Matrix3D.Builder nearbyBlocksMatrix = Matrix3D.newBuilder();
+        for(double[][] matrix : nearbyBlocks) {
+            Matrix.Builder matrixBuilder = Matrix.newBuilder();
+            for(double[] row : matrix) {
+                Row.Builder rowBuilder = Row.newBuilder();
+                for(double value : row) {
+                    rowBuilder.addValues(value);
+                }
+                matrixBuilder.addRows(rowBuilder);
             }
-            nearbyBlocksMatrix.addRows(rowBuilder);
+            nearbyBlocksMatrix.addMatrix(matrixBuilder);
         }
 
         State stateInfo = State.newBuilder()
@@ -597,7 +675,7 @@ public class Minecraftaimod implements ModInitializer {
         double hunger = agent.getHungerManager().getFoodLevel();
         double saturation = agent.getHungerManager().getSaturationLevel();
 
-        double[] agentPos = getPos();
+//        double[] agentPos = getPos();
 
         Vec3d vel = agent.getVelocity();
         double vx = vel.x;
@@ -647,9 +725,9 @@ public class Minecraftaimod implements ModInitializer {
 
                 row = new double[]{
                         Registries.BLOCK.getRawId(state.getBlock()),
-                        pos.getX() - agent.getBlockX(),
-                        pos.getY() - agent.getBlockY(),
-                        pos.getZ() - agent.getBlockZ(),
+                        0,
+                        0,
+                        0,
                         0,
                         0,
                         0,
@@ -936,27 +1014,16 @@ public class Minecraftaimod implements ModInitializer {
      * @return double[][] where each row =
      *         [Block id, x, y, z]
      */
-    public double[][] getNearbyBlocks() {
-        int coreRadius = 5;
-        int fwdRadius = 10;
-        int sliceWidth = 5;
-        int verticalRadius = 3; // Vertical space not as significant
+    public double[][][] getNearbyBlocks() {
+        int coreRadius = 8;
+        int verticalRadius = 4; // Vertical space not as significant
 
-        int coreRows = ((coreRadius * 2) + 1) * ((verticalRadius * 2) + 1) * ((coreRadius * 2) + 1);
-        int sliceRows = (sliceWidth * 2 + 1) * (verticalRadius * 2 + 1) * (fwdRadius);
-        int rows = coreRows + sliceRows;
-
-        double[][] foundBlocks = new double[rows][4];
+        double[][][] foundBlocks = new double[coreRadius * 2 + 1][verticalRadius * 2 + 1][coreRadius * 2 + 1];
 
         int agentBlockX = agent.getBlockX();
         int agentBlockY = agent.getBlockY();
         int agentBlockZ = agent.getBlockZ();
 
-        float yaw = agent.getYaw();
-        double dirX = -Math.sin(Math.toRadians(yaw));
-        double dirZ =  Math.cos(Math.toRadians(yaw));
-
-        int idx = 0;
         for(int x = agentBlockX - coreRadius; x <= agentBlockX + coreRadius; x++) {
             for (int y = agentBlockY - verticalRadius; y <= agentBlockY + verticalRadius; y++) {
                 for(int z = agentBlockZ - coreRadius; z <= agentBlockZ + coreRadius; z++) {
@@ -964,63 +1031,22 @@ public class Minecraftaimod implements ModInitializer {
                     BlockState state = agent.getEntityWorld().getBlockState(pos);
 
                     boolean isLog = state.isIn(BlockTags.LOGS);
-                    if(isLog) {
+                    if(isLog && !visitedWood.contains(new Tuple3(pos.getX(), 0, pos.getZ()))) {
                         double dist_to_block = Math.sqrt(Math.pow((agentBlockX - pos.getX()), 2) + Math.pow((agentBlockY - pos.getY()), 2) + Math.pow((agentBlockZ - pos.getZ()), 2));
-                        if(nearestWood == null) nearestWood = pos;
+                        if(nearestWood == null){
+                            nearestWood = new BlockPos(x, 0, z); // exclude y to not reward jumping
+                        }
                         else {
                             double current_log_dist = Math.sqrt(Math.pow(agentBlockX - nearestWood.getX(), 2) + Math.pow(agentBlockY - nearestWood.getY(), 2) + Math.pow(agentBlockZ - nearestWood.getZ(), 2));
-                            if(dist_to_block < current_log_dist) nearestWood = pos;
+                            if(dist_to_block < current_log_dist) nearestWood = new BlockPos(x, 0, z);
                         }
                     }
 
-                    double relativeBlockX = x - agentBlockX;
-                    double relativeBlockY = y - agentBlockY;;
-                    double relativeBlockZ = z - agentBlockZ;
+                    int relX = x - agentBlockX + coreRadius;       // shift into array bounds
+                    int relY = y - agentBlockY + verticalRadius;
+                    int relZ = z - agentBlockZ + coreRadius;
 
-                    relativeBlockX /= (double) fwdRadius;
-                    relativeBlockY /= (double) verticalRadius;
-                    relativeBlockZ /= (double) fwdRadius;
-
-                    foundBlocks[idx][0] = Registries.BLOCK.getRawId(state.getBlock());
-                    foundBlocks[idx][1] = relativeBlockX;
-                    foundBlocks[idx][2] = relativeBlockY;
-                    foundBlocks[idx][3] = relativeBlockZ;
-
-                    idx++;
-                }
-            }
-        }
-
-        for (int dist = coreRadius; dist < fwdRadius; dist++) {
-            int cx = agentBlockX + (int) (dirX * dist);
-            int cz = agentBlockZ + (int) (dirZ * dist);
-
-            for (int x = cx - sliceWidth; x <= cx + sliceWidth; x++) {
-                for (int y = agentBlockY - verticalRadius; y <= agentBlockY + verticalRadius; y++) {
-                    for (int z = cz - sliceWidth; z <= cz + sliceWidth; z++) {
-
-                        BlockPos pos = new BlockPos(x, y, z);
-                        BlockState state = agent.getEntityWorld().getBlockState(pos);
-
-                        if (idx >= rows) break;
-
-                        boolean isLog = state.isIn(BlockTags.LOGS);
-                        if(isLog) {
-                            double dist_to_block = Math.sqrt(Math.pow((agentBlockX - pos.getX()), 2) + Math.pow((agentBlockY - pos.getY()), 2) + Math.pow((agentBlockZ - pos.getZ()), 2));
-                            if(nearestWood == null) nearestWood = pos;
-                            else {
-                                double current_log_dist = Math.sqrt(Math.pow(agentBlockX - nearestWood.getX(), 2) + Math.pow(agentBlockY - nearestWood.getY(), 2) + Math.pow(agentBlockZ - nearestWood.getZ(), 2));
-                                if(dist_to_block < current_log_dist) nearestWood = pos;
-                            }
-                        }
-
-                        foundBlocks[idx][0] = Registries.BLOCK.getRawId(state.getBlock());
-                        foundBlocks[idx][1] = x - agentBlockX;
-                        foundBlocks[idx][2] = y - agentBlockY;
-                        foundBlocks[idx][3] = z - agentBlockZ;
-
-                        idx++;
-                    }
+                    foundBlocks[relX][relY][relZ] = Registries.BLOCK.getRawId(state.getBlock());
                 }
             }
         }

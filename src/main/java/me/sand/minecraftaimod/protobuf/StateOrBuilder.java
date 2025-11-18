@@ -55,17 +55,17 @@ public interface StateOrBuilder extends
   me.sand.minecraftaimod.protobuf.MatrixOrBuilder getNearbyEntitiesOrBuilder();
 
   /**
-   * <code>.minecraftai.Matrix nearbyBlocks = 4;</code>
+   * <code>.minecraftai.Matrix3D nearbyBlocks = 4;</code>
    * @return Whether the nearbyBlocks field is set.
    */
   boolean hasNearbyBlocks();
   /**
-   * <code>.minecraftai.Matrix nearbyBlocks = 4;</code>
+   * <code>.minecraftai.Matrix3D nearbyBlocks = 4;</code>
    * @return The nearbyBlocks.
    */
-  me.sand.minecraftaimod.protobuf.Matrix getNearbyBlocks();
+  me.sand.minecraftaimod.protobuf.Matrix3D getNearbyBlocks();
   /**
-   * <code>.minecraftai.Matrix nearbyBlocks = 4;</code>
+   * <code>.minecraftai.Matrix3D nearbyBlocks = 4;</code>
    */
-  me.sand.minecraftaimod.protobuf.MatrixOrBuilder getNearbyBlocksOrBuilder();
+  me.sand.minecraftaimod.protobuf.Matrix3DOrBuilder getNearbyBlocksOrBuilder();
 }

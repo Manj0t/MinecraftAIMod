@@ -126,9 +126,9 @@ private static final long serialVersionUID = 0L;
   }
 
   public static final int NEARBYBLOCKS_FIELD_NUMBER = 4;
-  private me.sand.minecraftaimod.protobuf.Matrix nearbyBlocks_;
+  private me.sand.minecraftaimod.protobuf.Matrix3D nearbyBlocks_;
   /**
-   * <code>.minecraftai.Matrix nearbyBlocks = 4;</code>
+   * <code>.minecraftai.Matrix3D nearbyBlocks = 4;</code>
    * @return Whether the nearbyBlocks field is set.
    */
   @java.lang.Override
@@ -136,19 +136,19 @@ private static final long serialVersionUID = 0L;
     return nearbyBlocks_ != null;
   }
   /**
-   * <code>.minecraftai.Matrix nearbyBlocks = 4;</code>
+   * <code>.minecraftai.Matrix3D nearbyBlocks = 4;</code>
    * @return The nearbyBlocks.
    */
   @java.lang.Override
-  public me.sand.minecraftaimod.protobuf.Matrix getNearbyBlocks() {
-    return nearbyBlocks_ == null ? me.sand.minecraftaimod.protobuf.Matrix.getDefaultInstance() : nearbyBlocks_;
+  public me.sand.minecraftaimod.protobuf.Matrix3D getNearbyBlocks() {
+    return nearbyBlocks_ == null ? me.sand.minecraftaimod.protobuf.Matrix3D.getDefaultInstance() : nearbyBlocks_;
   }
   /**
-   * <code>.minecraftai.Matrix nearbyBlocks = 4;</code>
+   * <code>.minecraftai.Matrix3D nearbyBlocks = 4;</code>
    */
   @java.lang.Override
-  public me.sand.minecraftaimod.protobuf.MatrixOrBuilder getNearbyBlocksOrBuilder() {
-    return nearbyBlocks_ == null ? me.sand.minecraftaimod.protobuf.Matrix.getDefaultInstance() : nearbyBlocks_;
+  public me.sand.minecraftaimod.protobuf.Matrix3DOrBuilder getNearbyBlocksOrBuilder() {
+    return nearbyBlocks_ == null ? me.sand.minecraftaimod.protobuf.Matrix3D.getDefaultInstance() : nearbyBlocks_;
   }
 
   private byte memoizedIsInitialized = -1;
@@ -939,31 +939,31 @@ private static final long serialVersionUID = 0L;
       return nearbyEntitiesBuilder_;
     }
 
-    private me.sand.minecraftaimod.protobuf.Matrix nearbyBlocks_;
+    private me.sand.minecraftaimod.protobuf.Matrix3D nearbyBlocks_;
     private com.google.protobuf.SingleFieldBuilderV3<
-        me.sand.minecraftaimod.protobuf.Matrix, me.sand.minecraftaimod.protobuf.Matrix.Builder, me.sand.minecraftaimod.protobuf.MatrixOrBuilder> nearbyBlocksBuilder_;
+        me.sand.minecraftaimod.protobuf.Matrix3D, me.sand.minecraftaimod.protobuf.Matrix3D.Builder, me.sand.minecraftaimod.protobuf.Matrix3DOrBuilder> nearbyBlocksBuilder_;
     /**
-     * <code>.minecraftai.Matrix nearbyBlocks = 4;</code>
+     * <code>.minecraftai.Matrix3D nearbyBlocks = 4;</code>
      * @return Whether the nearbyBlocks field is set.
      */
     public boolean hasNearbyBlocks() {
       return ((bitField0_ & 0x00000008) != 0);
     }
     /**
-     * <code>.minecraftai.Matrix nearbyBlocks = 4;</code>
+     * <code>.minecraftai.Matrix3D nearbyBlocks = 4;</code>
      * @return The nearbyBlocks.
      */
-    public me.sand.minecraftaimod.protobuf.Matrix getNearbyBlocks() {
+    public me.sand.minecraftaimod.protobuf.Matrix3D getNearbyBlocks() {
       if (nearbyBlocksBuilder_ == null) {
-        return nearbyBlocks_ == null ? me.sand.minecraftaimod.protobuf.Matrix.getDefaultInstance() : nearbyBlocks_;
+        return nearbyBlocks_ == null ? me.sand.minecraftaimod.protobuf.Matrix3D.getDefaultInstance() : nearbyBlocks_;
       } else {
         return nearbyBlocksBuilder_.getMessage();
       }
     }
     /**
-     * <code>.minecraftai.Matrix nearbyBlocks = 4;</code>
+     * <code>.minecraftai.Matrix3D nearbyBlocks = 4;</code>
      */
-    public Builder setNearbyBlocks(me.sand.minecraftaimod.protobuf.Matrix value) {
+    public Builder setNearbyBlocks(me.sand.minecraftaimod.protobuf.Matrix3D value) {
       if (nearbyBlocksBuilder_ == null) {
         if (value == null) {
           throw new NullPointerException();
@@ -977,10 +977,10 @@ private static final long serialVersionUID = 0L;
       return this;
     }
     /**
-     * <code>.minecraftai.Matrix nearbyBlocks = 4;</code>
+     * <code>.minecraftai.Matrix3D nearbyBlocks = 4;</code>
      */
     public Builder setNearbyBlocks(
-        me.sand.minecraftaimod.protobuf.Matrix.Builder builderForValue) {
+        me.sand.minecraftaimod.protobuf.Matrix3D.Builder builderForValue) {
       if (nearbyBlocksBuilder_ == null) {
         nearbyBlocks_ = builderForValue.build();
       } else {
@@ -991,13 +991,13 @@ private static final long serialVersionUID = 0L;
       return this;
     }
     /**
-     * <code>.minecraftai.Matrix nearbyBlocks = 4;</code>
+     * <code>.minecraftai.Matrix3D nearbyBlocks = 4;</code>
      */
-    public Builder mergeNearbyBlocks(me.sand.minecraftaimod.protobuf.Matrix value) {
+    public Builder mergeNearbyBlocks(me.sand.minecraftaimod.protobuf.Matrix3D value) {
       if (nearbyBlocksBuilder_ == null) {
         if (((bitField0_ & 0x00000008) != 0) &&
           nearbyBlocks_ != null &&
-          nearbyBlocks_ != me.sand.minecraftaimod.protobuf.Matrix.getDefaultInstance()) {
+          nearbyBlocks_ != me.sand.minecraftaimod.protobuf.Matrix3D.getDefaultInstance()) {
           getNearbyBlocksBuilder().mergeFrom(value);
         } else {
           nearbyBlocks_ = value;
@@ -1010,7 +1010,7 @@ private static final long serialVersionUID = 0L;
       return this;
     }
     /**
-     * <code>.minecraftai.Matrix nearbyBlocks = 4;</code>
+     * <code>.minecraftai.Matrix3D nearbyBlocks = 4;</code>
      */
     public Builder clearNearbyBlocks() {
       bitField0_ = (bitField0_ & ~0x00000008);
@@ -1023,33 +1023,33 @@ private static final long serialVersionUID = 0L;
       return this;
     }
     /**
-     * <code>.minecraftai.Matrix nearbyBlocks = 4;</code>
+     * <code>.minecraftai.Matrix3D nearbyBlocks = 4;</code>
      */
-    public me.sand.minecraftaimod.protobuf.Matrix.Builder getNearbyBlocksBuilder() {
+    public me.sand.minecraftaimod.protobuf.Matrix3D.Builder getNearbyBlocksBuilder() {
       bitField0_ |= 0x00000008;
       onChanged();
       return getNearbyBlocksFieldBuilder().getBuilder();
     }
     /**
-     * <code>.minecraftai.Matrix nearbyBlocks = 4;</code>
+     * <code>.minecraftai.Matrix3D nearbyBlocks = 4;</code>
      */
-    public me.sand.minecraftaimod.protobuf.MatrixOrBuilder getNearbyBlocksOrBuilder() {
+    public me.sand.minecraftaimod.protobuf.Matrix3DOrBuilder getNearbyBlocksOrBuilder() {
       if (nearbyBlocksBuilder_ != null) {
         return nearbyBlocksBuilder_.getMessageOrBuilder();
       } else {
         return nearbyBlocks_ == null ?
-            me.sand.minecraftaimod.protobuf.Matrix.getDefaultInstance() : nearbyBlocks_;
+            me.sand.minecraftaimod.protobuf.Matrix3D.getDefaultInstance() : nearbyBlocks_;
       }
     }
     /**
-     * <code>.minecraftai.Matrix nearbyBlocks = 4;</code>
+     * <code>.minecraftai.Matrix3D nearbyBlocks = 4;</code>
      */
     private com.google.protobuf.SingleFieldBuilderV3<
-        me.sand.minecraftaimod.protobuf.Matrix, me.sand.minecraftaimod.protobuf.Matrix.Builder, me.sand.minecraftaimod.protobuf.MatrixOrBuilder> 
+        me.sand.minecraftaimod.protobuf.Matrix3D, me.sand.minecraftaimod.protobuf.Matrix3D.Builder, me.sand.minecraftaimod.protobuf.Matrix3DOrBuilder> 
         getNearbyBlocksFieldBuilder() {
       if (nearbyBlocksBuilder_ == null) {
         nearbyBlocksBuilder_ = new com.google.protobuf.SingleFieldBuilderV3<
-            me.sand.minecraftaimod.protobuf.Matrix, me.sand.minecraftaimod.protobuf.Matrix.Builder, me.sand.minecraftaimod.protobuf.MatrixOrBuilder>(
+            me.sand.minecraftaimod.protobuf.Matrix3D, me.sand.minecraftaimod.protobuf.Matrix3D.Builder, me.sand.minecraftaimod.protobuf.Matrix3DOrBuilder>(
                 getNearbyBlocks(),
                 getParentForChildren(),
                 isClean());

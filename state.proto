@@ -5,6 +5,10 @@ package minecraftai;
 option java_package = "me.sand.minecraftaimod.protobuf";
 option java_multiple_files = true;
 
+message Matrix3D {
+  repeated Matrix matrix = 1;
+}
+
 message Matrix {
   repeated Row rows = 1;
 }
@@ -17,7 +21,7 @@ message State {
   repeated double agentInfo = 1;
   Matrix inventory = 2;
   Matrix nearbyEntities = 3;
-  Matrix nearbyBlocks = 4;
+  Matrix3D nearbyBlocks = 4;
 }
 
 message Action {

@@ -15,6 +15,11 @@ public final class StateOuterClass {
         (com.google.protobuf.ExtensionRegistryLite) registry);
   }
   static final com.google.protobuf.Descriptors.Descriptor
+    internal_static_minecraftai_Matrix3D_descriptor;
+  static final 
+    com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
+      internal_static_minecraftai_Matrix3D_fieldAccessorTable;
+  static final com.google.protobuf.Descriptors.Descriptor
     internal_static_minecraftai_Matrix_descriptor;
   static final 
     com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
@@ -43,39 +48,47 @@ public final class StateOuterClass {
       descriptor;
   static {
     java.lang.String[] descriptorData = {
-      "\n\013state.proto\022\013minecraftai\"(\n\006Matrix\022\036\n\004" +
-      "rows\030\001 \003(\0132\020.minecraftai.Row\"\025\n\003Row\022\016\n\006v" +
-      "alues\030\001 \003(\001\"\232\001\n\005State\022\021\n\tagentInfo\030\001 \003(\001" +
-      "\022&\n\tinventory\030\002 \001(\0132\023.minecraftai.Matrix" +
-      "\022+\n\016nearbyEntities\030\003 \001(\0132\023.minecraftai.M" +
-      "atrix\022)\n\014nearbyBlocks\030\004 \001(\0132\023.minecrafta" +
-      "i.Matrix\"\031\n\006Action\022\017\n\007actions\030\001 \003(\002B#\n\037m" +
-      "e.sand.minecraftaimod.protobufP\001b\006proto3"
+      "\n\013state.proto\022\013minecraftai\"/\n\010Matrix3D\022#" +
+      "\n\006matrix\030\001 \003(\0132\023.minecraftai.Matrix\"(\n\006M" +
+      "atrix\022\036\n\004rows\030\001 \003(\0132\020.minecraftai.Row\"\025\n" +
+      "\003Row\022\016\n\006values\030\001 \003(\001\"\234\001\n\005State\022\021\n\tagentI" +
+      "nfo\030\001 \003(\001\022&\n\tinventory\030\002 \001(\0132\023.minecraft" +
+      "ai.Matrix\022+\n\016nearbyEntities\030\003 \001(\0132\023.mine" +
+      "craftai.Matrix\022+\n\014nearbyBlocks\030\004 \001(\0132\025.m" +
+      "inecraftai.Matrix3D\"\031\n\006Action\022\017\n\007actions" +
+      "\030\001 \003(\002B#\n\037me.sand.minecraftaimod.protobu" +
+      "fP\001b\006proto3"
     };
     descriptor = com.google.protobuf.Descriptors.FileDescriptor
       .internalBuildGeneratedFileFrom(descriptorData,
         new com.google.protobuf.Descriptors.FileDescriptor[] {
         });
-    internal_static_minecraftai_Matrix_descriptor =
+    internal_static_minecraftai_Matrix3D_descriptor =
       getDescriptor().getMessageTypes().get(0);
+    internal_static_minecraftai_Matrix3D_fieldAccessorTable = new
+      com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
+        internal_static_minecraftai_Matrix3D_descriptor,
+        new java.lang.String[] { "Matrix", });
+    internal_static_minecraftai_Matrix_descriptor =
+      getDescriptor().getMessageTypes().get(1);
     internal_static_minecraftai_Matrix_fieldAccessorTable = new
       com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
         internal_static_minecraftai_Matrix_descriptor,
         new java.lang.String[] { "Rows", });
     internal_static_minecraftai_Row_descriptor =
-      getDescriptor().getMessageTypes().get(1);
+      getDescriptor().getMessageTypes().get(2);
     internal_static_minecraftai_Row_fieldAccessorTable = new
       com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
         internal_static_minecraftai_Row_descriptor,
         new java.lang.String[] { "Values", });
     internal_static_minecraftai_State_descriptor =
-      getDescriptor().getMessageTypes().get(2);
+      getDescriptor().getMessageTypes().get(3);
     internal_static_minecraftai_State_fieldAccessorTable = new
       com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
         internal_static_minecraftai_State_descriptor,
         new java.lang.String[] { "AgentInfo", "Inventory", "NearbyEntities", "NearbyBlocks", });
     internal_static_minecraftai_Action_descriptor =
-      getDescriptor().getMessageTypes().get(3);
+      getDescriptor().getMessageTypes().get(4);
     internal_static_minecraftai_Action_fieldAccessorTable = new
       com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
         internal_static_minecraftai_Action_descriptor,

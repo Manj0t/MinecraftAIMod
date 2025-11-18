@@ -7,7 +7,7 @@ class ItemEmbedder(nn.Module):
 
     def __init__(self, num_items):
         super().__init__()
-        self.id_embedding = nn.Embedding(num_items, 64)
+        self.id_embedding = nn.Embedding(num_items, 32)
 
         self.scalar_mlp = nn.Sequential(
             nn.Linear(6, 32),
@@ -20,9 +20,9 @@ class ItemEmbedder(nn.Module):
         # self.output = nn.Linear(64 + 2, 64)
 
         self.final = nn.Sequential(
-            nn.Linear(64 + 16 + 2, 64),
+            nn.Linear(32 + 16 + 2, 32),
             nn.ReLU(),
-            nn.LayerNorm(64),
+            nn.LayerNorm(32),
         )
 
     def forward(self, item_info):
@@ -45,23 +45,21 @@ class BlockEmbedder(nn.Module):
 
     def __init__(self, num_blocks):
         super().__init__()
-        self.block_embedding = nn.Embedding(num_blocks, 64)
+        self.block_embedding = nn.Embedding(num_blocks, 32)
 
-        self.final = nn.Sequential(
-            nn.Linear(64 + 3, 64),
-            nn.ReLU(),
-            nn.LayerNorm(64),
-        )
     def forward(self, block_info):
-        block_id = block_info[..., 0].long()
-        block_position = block_info[..., 1:].float()
+        # block_ids: (D, H, W) OR (batch, D, H, W)
 
-        block_embedding = self.block_embedding(block_id)
+        if block_info.dim() == 3:
+            block_info = block_info.unsqueeze(0)
 
-        # (batch_size, idk, 67)
-        combined = torch.cat((block_embedding, block_position), dim=-1)
+        # (B, D, H, W, C)
+        block_embedding = self.block_embedding(block_info)
 
-        return self.final(combined)
+        # (B, C, D, H, W)
+        block_embedding = block_embedding.permute(0, 4, 1, 2, 3)
+
+        return block_embedding
 
 
 class EntityEmbedder(nn.Module):
@@ -69,7 +67,7 @@ class EntityEmbedder(nn.Module):
     # Input: (batch_size, 10, 8)
     def __init__(self, num_entities):
         super().__init__()
-        self.entity_embedding = nn.Embedding(num_entities, 64)
+        self.entity_embedding = nn.Embedding(num_entities, 32)
 
         self.scalar_mlp = nn.Sequential(
             nn.Linear(4, 32),
@@ -77,11 +75,10 @@ class EntityEmbedder(nn.Module):
             nn.Linear(32, 16),
         )
 
-
         self.final = nn.Sequential(
-            nn.Linear(64 + 16 + 3, 64),
+            nn.Linear(32 + 16 + 3, 32),
             nn.ReLU(),
-            nn.LayerNorm(64),
+            nn.LayerNorm(32),
         )
 
     def forward(self, entity_info):

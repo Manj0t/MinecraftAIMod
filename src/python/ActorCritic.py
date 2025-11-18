@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from Embedders import ItemEmbedder, BlockEmbedder, EntityEmbedder
 from Transformers import MinecraftTransformer
+from BlockCNN import BlockCNN
 
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -13,25 +14,16 @@ class ActorCriticNetwork(nn.Module):
         self.block_embedder = BlockEmbedder(num_blocks)
         self.entity_embedder = EntityEmbedder(num_entities)
 
-        self.embed_dim = 64
+        self.embed_dim = 32
 
         # coreRadius = 5
-        # fwdRadius = 10
-        # sliceWidth = 5
         # verticalRadius = 3
-        #
-        # coreRows = ((coreRadius * 2) + 1) * ((verticalRadius * 2) + 1) * ((coreRadius * 2) + 1)
-        # sliceRows = (sliceWidth * 2 + 1) * (verticalRadius * 2 + 1) * (fwdRadius)
-        # rows = coreRows + sliceRows
-        #
-        # amt_of_blocks_recieved = coreRows + sliceRows
 
-        # self.item_transformer = MinecraftTransformer(embed_dim)
         #  * ( (5 * 2) + 1) * ( (3 * 2) + 1) * ( (5 * 2) + 1 )
         self.block_transformer = MinecraftTransformer(self.embed_dim)
-        # self.entity_transformer = MinecraftTransformer(embed_dim)
+        self.block_cnn = BlockCNN(self.embed_dim)
 
-        obs_space_size = (agent_info_dim + 0) + 41 * self.embed_dim + self.embed_dim + 10 * self.embed_dim
+        obs_space_size = (agent_info_dim + 0) + 41 * self.embed_dim + 4096 + 10 * self.embed_dim
 
         self.shared_layers = nn.Sequential(
             nn.Linear(obs_space_size, 256),
@@ -56,10 +48,6 @@ class ActorCriticNetwork(nn.Module):
 
 
     def obs_preprocessing(self, obs):
-        # self.debug_tensor("Inventory", obs["Inventory"])
-        # self.debug_tensor("Blocks", obs["Blocks"])
-        # self.debug_tensor("Entities", obs["Entities"])
-        # self.debug_tensor("AgentInfo", obs["AgentInfo"])
 
         item_embedding = self.item_embedder(obs['Inventory'])
         block_embedding = self.block_embedder(obs['Blocks'])
@@ -71,32 +59,32 @@ class ActorCriticNetwork(nn.Module):
         look_slice = agent_info[:, -9:]
         agent_info = agent_info[:, :-9]
 
-        look_type = look_slice[:, 0].long()
-        looking_at_info = look_slice[:, 1:]
-
-
-        look_embeds = []
-        for b in range(agent_info.size(0)):
-            type = int(look_type[b].item())
-            if type == 0:
-                look_embeds.append(torch.zeros(self.embed_dim, device=DEVICE))
-            elif type == 1:
-                look_embeds.append(self.block_embedder(looking_at_info[b:b+1, :4]).squeeze(0))
-            else:
-                look_embeds.append(self.entity_embedder(looking_at_info[b:b+1]).squeeze(0))
-
-        look_embeds = torch.stack(look_embeds, dim=0)
+        # look_type = look_slice[:, 0].long()
+        # looking_at_info = look_slice[:, 1:]
+        #
+        #
+        # look_embeds = []
+        # for b in range(agent_info.size(0)):
+        #     type = int(look_type[b].item())
+        #     if type == 0:
+        #         look_embeds.append(torch.zeros(self.embed_dim, device=DEVICE))
+        #     elif type == 1:
+        #         look_embeds.append(self.block_embedder(looking_at_info[b:b+1, 0]).squeeze(0))
+        #     else:
+        #         look_embeds.append(self.entity_embedder(looking_at_info[b:b+1]).squeeze(0))
+        #
+        # look_embeds = torch.stack(look_embeds, dim=0)
 
         if len(item_embedding.shape) == 2:
             item_embedding = item_embedding.unsqueeze(0)
-        if len(block_embedding.shape) == 2:
+        if len(block_embedding.shape) == 3:
             block_embedding = block_embedding.unsqueeze(0)
         if len(entity_embedding.shape) == 2:
             entity_embedding = entity_embedding.unsqueeze(0)
 
 
         item_x = torch.flatten(item_embedding, start_dim=1)
-        block_x = self.block_transformer(block_embedding)
+        block_x = self.block_cnn(block_embedding)
         entity_x = torch.flatten(entity_embedding, start_dim=1)
 
 

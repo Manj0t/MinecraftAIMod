@@ -8,6 +8,7 @@ from ActorCritic import *
 import torch
 import os
 import numpy as np
+from CNNDebugger import start_debugging
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -48,7 +49,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
     ppo = PPOTrainer(model)
 
-    load_path = "models/curr_test.pth"
+    load_path = "models/model_best_cnn292.34.pth"
 
     if os.path.exists(load_path):
         print(f"🔁 Loading checkpoint: {load_path}")
@@ -83,10 +84,17 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         model_dict.update(filtered_dict)
         model.load_state_dict(model_dict, strict=False)
 
-        if "policy_optimizer_state_dict" in checkpoint:
+        # with torch.no_grad():
+        #     # Nudge bias to prefer no jump
+        #     # model.jump_policy.bias.add_(-2.5)
+        #     print("⬇️  Applied anti-jump bias")
+
+        if "optimizer_state_dict" in checkpoint:
             try:
-                ppo.policy_optimizer.load_state_dict(checkpoint["policy_optimizer_state_dict"])
-                ppo.value_optimizer.load_state_dict(checkpoint["value_optimizer_state_dict"])
+                ppo.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+                print("✅ Loaded optimizer state!")
+                # ppo.policy_optimizer.load_state_dict(checkpoint["policy_optimizer_state_dict"])
+                # ppo.value_optimizer.load_state_dict(checkpoint["value_optimizer_state_dict"])
 
                 # VERIFY optimizer shapes match
                 # for old_state, new_param in zip(
@@ -96,12 +104,13 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 #         if isinstance(v, torch.Tensor) and v.shape != new_param.shape:
                 #             raise RuntimeError("Optimizer state tensor shape mismatch")
 
-                print("✅ Loaded optimizer state!")
+
 
             except Exception as e:
                 print("⚠️ Optimizer state incompatible — resetting optimizer.")
-                ppo.policy_optimizer = torch.optim.Adam(ppo.policy_optimizer.param_groups[0]["params"])
-                ppo.value_optimizer = torch.optim.Adam(ppo.value_optimizer.param_groups[0]["params"])
+                # ppo.policy_optimizer = torch.optim.Adam(ppo.policy_optimizer.param_groups[0]["params"])
+                # ppo.value_optimizer = torch.optim.Adam(ppo.value_optimizer.param_groups[0]["params"])
+                ppo.optimizer = torch.optim.Adam(ppo.optimizer.param_groups[0]["params"])
 
         # curr_best = checkpoint['best_reward']
         curr_best = float('-inf')
@@ -111,6 +120,9 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
     else:
         print("⚠️ No checkpoint found, training from scratch")
+
+
+    start_debugging()
 
 
     for i in range(1000):
@@ -123,11 +135,10 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
         if ep_reward >= curr_best:
             curr_best = ep_reward
-            save_path = f"models/model_best_more_block_info{curr_best:.2f}.pth"
+            save_path = f"models/model_best_cnn{curr_best:.2f}.pth"
             torch.save({
                 "model_state_dict": model.state_dict(),
-                "policy_optimizer_state_dict": ppo.policy_optimizer.state_dict(),
-                "value_optimizer_state_dict": ppo.value_optimizer.state_dict(),
+                "optimizer_state_dict": ppo.optimizer.state_dict(),
                 "rewards": ep_rewards,
                 "best_reward": curr_best,
                 "iter": i,
@@ -143,7 +154,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
         obs = {
             'Inventory' : torch.tensor(train_data['InventoryObs'][permute_idxs], dtype=torch.float32, device=DEVICE),
-            'Blocks'    : torch.tensor(train_data['BlocksObs'][permute_idxs], dtype=torch.float32, device=DEVICE),
+            'Blocks'    : torch.tensor(train_data['BlocksObs'][permute_idxs], dtype=torch.long, device=DEVICE),
             'Entities'  : torch.tensor(train_data['EntitiesObs'][permute_idxs], dtype=torch.float32, device=DEVICE),
             'AgentInfo' : torch.tensor(train_data['AgentInfoObs'][permute_idxs], dtype=torch.float32, device=DEVICE)
         }
@@ -162,8 +173,8 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         returns = torch.tensor(train_data['returns'][permute_idxs], dtype=torch.float32, device=DEVICE)
         print_cuda_mem("Before Training")
 
-        ppo.train_policy(obs, act, log_probs, advantages)
-        ppo.train_value(obs, returns)
+        ppo.train_policy(obs, act, log_probs, advantages, returns)
+        # ppo.train_value(obs, returns)
         print('********************************')
         print('****** Completed Training ******')
         print('********************************')

@@ -8,6 +8,8 @@ import socket
 import struct
 import state_pb2
 
+from CNNDebugger import debug_cnn
+
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 # def discount_rewards(rewards, gamma=0.99):
@@ -57,13 +59,15 @@ def get_state():
     ]
 
     nearbyBlocks = [
-        [value for value in row.values] for row in state.nearbyBlocks.rows
+        [
+            [value for value in row.values] for row in matrix.rows
+        ] for matrix in state.nearbyBlocks.matrix
     ]
 
     agentInfo_t = torch.tensor(agentInfo, dtype=torch.float32).to(DEVICE)
     agentInventory_t = torch.tensor(agentInventory, dtype=torch.float32).to(DEVICE)
     nearbyEntities_t = torch.tensor(nearbyEntities, dtype=torch.float32).to(DEVICE)
-    nearbyBlocks_t = torch.tensor(nearbyBlocks, dtype=torch.float32).to(DEVICE)
+    nearbyBlocks_t = torch.tensor(nearbyBlocks, dtype=torch.long).to(DEVICE)
 
     obs = {
         'Inventory': agentInventory_t,
@@ -104,9 +108,8 @@ def compute_gaes(rewards, values, dones, gamma=0.99, lam=0.95):
     advantages = np.zeros(T)
     gae = 0
     for t in reversed(range(T)):
-        next_value = values[t + 1] if t < T - 1 else 0
+        next_value = values[t + 1] if t < T - 1 else values[t]
         delta = rewards[t] + gamma * next_value * (1 - dones[t]) - values[t] # If done, no reward
-        advantages[t] = delta + (gamma * lam) * (1 - dones[t]) * gae
 
         gae = delta + gamma * lam * (1 - dones[t]) * gae
         advantages[t] = gae
@@ -137,10 +140,12 @@ def rollout(model, max_steps=2048):
     print(max_steps)
     ep_reward = 0
     for i in range(max_steps):
+        debug_cnn(model, obs["Blocks"])
         if i % 500 == 0:
             print(i)
         with torch.no_grad():
             logits_dict, value = model(obs)
+
 
         logits_dict['jump'] = logits_dict['jump'].squeeze(-1)
 
@@ -162,7 +167,13 @@ def rollout(model, max_steps=2048):
         hotbar_log_prob = hotbar_dist.log_prob(hotbar_act)
         pan_cam_log_prob = pan_cam_dist.log_prob(pan_cam_act)
 
-        act_log_prob = movement_log_prob + jump_log_prob + item_use_log_prob + hotbar_log_prob + pan_cam_log_prob
+        act_log_prob = (
+                movement_log_prob +
+                jump_log_prob +
+                item_use_log_prob +
+                hotbar_log_prob +
+                pan_cam_log_prob
+        )
 
         act_log_prob = act_log_prob.detach().cpu().item()
         value = value.detach().cpu().squeeze().item()
@@ -209,15 +220,18 @@ def rollout(model, max_steps=2048):
         obs = next_obs
         ep_reward += reward
 
-        if done:
-            break
+        # Don't need done? I think the take_step gets the new starting state anyway after reset?
+        # if done:
+            # obs = get_state()
 
     # logits is dict, won't work
-    for key in ["InventoryObs", "BlocksObs", "EntitiesObs", "AgentInfoObs", "movement", "jump", "item_use", "hotbar", "pan_cam", "log_prob", "value", "reward", "done"]:
+    for key in ["InventoryObs", "EntitiesObs", "AgentInfoObs", "log_prob", "value", "reward", "done"]:
         rollout_buffer[key] = np.array(rollout_buffer[key], dtype=np.float32)
+    for key in ["movement", "jump", "item_use", "hotbar", "pan_cam", "BlocksObs"]:
+        rollout_buffer[key] = np.array(rollout_buffer[key], dtype=np.int64)
 
     advantages, returns = compute_gaes(rollout_buffer['reward'], rollout_buffer['value'], rollout_buffer['done'])
-
+    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
     rollout_buffer['advantage'] = advantages
     rollout_buffer['returns'] = returns
 
@@ -248,3 +262,5 @@ def plot_rewards(ep_rewards, window=20, path='graph'):
     plt.grid(True)
     os.makedirs("graphs", exist_ok=True)
     plt.savefig(f'graphs/{path}.png',dpi=300, bbox_inches='tight')
+
+    plt.close()

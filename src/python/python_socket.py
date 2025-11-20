@@ -49,7 +49,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
     ppo = PPOTrainer(model)
 
-    load_path = "models/model_best_cnn292.34.pth"
+    load_path = "models/Saved_State_1131.35.pth"
 
     if os.path.exists(load_path):
         print(f"🔁 Loading checkpoint: {load_path}")
@@ -57,6 +57,8 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
         model_dict = model.state_dict()
         pretrained_dict = checkpoint["model_state_dict"]
+
+        # ep_rewards = checkpoint["rewards"]
 
         # Filter out weights that don't match shape (like shared_layers.0.weight)
         filtered_dict = {}
@@ -83,6 +85,10 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
         model_dict.update(filtered_dict)
         model.load_state_dict(model_dict, strict=False)
+
+        # with torch.no_grad():
+        #     model.jump_policy.weight.zero_()
+        #     model.jump_policy.bias.fill_(-4.59511985)  # ~25% Bernoulli prob
 
         # with torch.no_grad():
         #     # Nudge bias to prefer no jump
@@ -129,7 +135,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         print("Loop ", i)
         conn.sendall(struct.pack(">i", 1))
         print_cuda_mem("Before Rollout")
-        train_data, ep_reward = rollout(model)
+        train_data, ep_reward = rollout(model, ppo, ep_rewards, i, curr_best)
         ep_rewards.append(ep_reward)
         print_cuda_mem("After Rollout")
 
@@ -154,17 +160,18 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
         obs = {
             'Inventory' : torch.tensor(train_data['InventoryObs'][permute_idxs], dtype=torch.float32, device=DEVICE),
-            'Blocks'    : torch.tensor(train_data['BlocksObs'][permute_idxs], dtype=torch.long, device=DEVICE),
+            'Blocks'    : torch.tensor(train_data['BlocksObs'][permute_idxs], dtype=torch.int64, device=DEVICE),
             'Entities'  : torch.tensor(train_data['EntitiesObs'][permute_idxs], dtype=torch.float32, device=DEVICE),
-            'AgentInfo' : torch.tensor(train_data['AgentInfoObs'][permute_idxs], dtype=torch.float32, device=DEVICE)
+            'AgentInfo' : torch.tensor(train_data['AgentInfoObs'][permute_idxs], dtype=torch.float32, device=DEVICE),
+            'PrevActions' : torch.tensor(train_data['PrevActionsObs'][permute_idxs], dtype=torch.float32, device=DEVICE),
         }
 
         act = {
-            'movement'  : torch.tensor(train_data['movement'][permute_idxs], dtype=torch.long, device=DEVICE),
+            'movement'  : torch.tensor(train_data['movement'][permute_idxs], dtype=torch.int64, device=DEVICE),
             'jump'      : torch.tensor(train_data['jump'][permute_idxs], dtype=torch.float32, device=DEVICE),
-            'item_use'  : torch.tensor(train_data['item_use'][permute_idxs], dtype=torch.long, device=DEVICE),
-            'hotbar'    : torch.tensor(train_data['hotbar'][permute_idxs], dtype=torch.long, device=DEVICE),
-            'pan_cam'   : torch.tensor(train_data['pan_cam'][permute_idxs], dtype=torch.long, device=DEVICE)
+            'item_use'  : torch.tensor(train_data['item_use'][permute_idxs], dtype=torch.int64, device=DEVICE),
+            'hotbar'    : torch.tensor(train_data['hotbar'][permute_idxs], dtype=torch.int64, device=DEVICE),
+            'pan_cam'   : torch.tensor(train_data['pan_cam'][permute_idxs], dtype=torch.int64, device=DEVICE)
         }
 
         advantages = torch.tensor(train_data['advantage'][permute_idxs], dtype=torch.float32, device=DEVICE)

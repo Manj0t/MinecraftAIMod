@@ -8,10 +8,14 @@ import socket
 import struct
 import state_pb2
 
+import threading
+
 from CNNDebugger import debug_cnn
 
-DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
+
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+prevActions = torch.zeros(5, dtype=torch.float32).to(DEVICE)
 # def discount_rewards(rewards, gamma=0.99):
 #     reward_t = [float(rewards[-1])]
 #     for t in reversed(range(len(rewards) - 1)):
@@ -67,19 +71,22 @@ def get_state():
     agentInfo_t = torch.tensor(agentInfo, dtype=torch.float32).to(DEVICE)
     agentInventory_t = torch.tensor(agentInventory, dtype=torch.float32).to(DEVICE)
     nearbyEntities_t = torch.tensor(nearbyEntities, dtype=torch.float32).to(DEVICE)
-    nearbyBlocks_t = torch.tensor(nearbyBlocks, dtype=torch.long).to(DEVICE)
+    nearbyBlocks_t = torch.tensor(nearbyBlocks, dtype=torch.int64).to(DEVICE)
 
     obs = {
         'Inventory': agentInventory_t,
         'Blocks' : nearbyBlocks_t,
         'Entities' : nearbyEntities_t,
-        'AgentInfo' : agentInfo_t
+        'AgentInfo' : agentInfo_t,
+        'PrevActions' : prevActions
     }
 
     return obs
 
 
 def take_step(action, max_steps, i):
+    global prevActions
+    prevActions = torch.tensor(action, dtype=torch.float32).to(DEVICE)
     out_action = state_pb2.Action()
     out_action.actions.extend(action)
     out = out_action.SerializeToString()
@@ -89,6 +96,9 @@ def take_step(action, max_steps, i):
 
     reward = struct.unpack(">f", conn.recv(4))[0]
     done = struct.unpack(">i", conn.recv(4))[0]
+
+    if done:
+        prevActions = torch.zeros(5, dtype=torch.float32).to(DEVICE)
 
     # Ending rollout
     if i == max_steps - 1:
@@ -118,12 +128,13 @@ def compute_gaes(rewards, values, dones, gamma=0.99, lam=0.95):
     return advantages, returns
 
 
-def rollout(model, max_steps=2048):
+def rollout(model, ppo, ep_rewards, ppo_iter, curr_best, max_steps=2048):
     rollout_buffer = {
         "InventoryObs": [],
         "BlocksObs": [],
         "EntitiesObs": [],
         "AgentInfoObs": [],
+        "PrevActionsObs" : [],
         "movement": [],
         "jump": [],
         "item_use": [],
@@ -140,7 +151,7 @@ def rollout(model, max_steps=2048):
     print(max_steps)
     ep_reward = 0
     for i in range(max_steps):
-        debug_cnn(model, obs["Blocks"])
+        debug_cnn(model, obs["Blocks"], ppo, ep_rewards, ppo_iter, curr_best)
         if i % 500 == 0:
             print(i)
         with torch.no_grad():
@@ -154,6 +165,10 @@ def rollout(model, max_steps=2048):
         item_use_dist = Categorical(logits=logits_dict['item_use'])
         hotbar_dist = Categorical(logits=logits_dict['hotbar'])
         pan_cam_dist = Categorical(logits=logits_dict['pan_camera'])
+
+        # jump_logits = logits_dict['jump']
+        # print("Jump logits mean:", jump_logits.mean().item())
+        # print("Jump prob mean:", torch.sigmoid(jump_logits).mean().item())
 
         movement_act = movement_dist.sample()
         jump_act = jump_dist.sample()
@@ -196,6 +211,7 @@ def rollout(model, max_steps=2048):
         rollout_buffer['BlocksObs'].append(obs['Blocks'].detach().cpu())
         rollout_buffer['EntitiesObs'].append(obs['Entities'].detach().cpu())
         rollout_buffer['AgentInfoObs'].append(obs['AgentInfo'].detach().cpu())
+        rollout_buffer['PrevActionsObs'].append(obs['PrevActions'].detach().cpu())
         rollout_buffer["movement"].append(movement_act.detach().cpu())
         rollout_buffer["jump"].append(jump_act.detach().cpu())
         rollout_buffer["item_use"].append(item_use_act.detach().cpu())
@@ -225,9 +241,9 @@ def rollout(model, max_steps=2048):
             # obs = get_state()
 
     # logits is dict, won't work
-    for key in ["InventoryObs", "EntitiesObs", "AgentInfoObs", "log_prob", "value", "reward", "done"]:
+    for key in ["InventoryObs", "EntitiesObs", "AgentInfoObs",  "PrevActionsObs", "log_prob", "value", "reward", "done", "jump"]:
         rollout_buffer[key] = np.array(rollout_buffer[key], dtype=np.float32)
-    for key in ["movement", "jump", "item_use", "hotbar", "pan_cam", "BlocksObs"]:
+    for key in ["movement", "item_use", "hotbar", "pan_cam", "BlocksObs"]:
         rollout_buffer[key] = np.array(rollout_buffer[key], dtype=np.int64)
 
     advantages, returns = compute_gaes(rollout_buffer['reward'], rollout_buffer['value'], rollout_buffer['done'])

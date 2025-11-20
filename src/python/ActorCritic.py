@@ -23,7 +23,7 @@ class ActorCriticNetwork(nn.Module):
         self.block_transformer = MinecraftTransformer(self.embed_dim)
         self.block_cnn = BlockCNN(self.embed_dim)
 
-        obs_space_size = (agent_info_dim + 0) + 41 * self.embed_dim + 4096 + 10 * self.embed_dim
+        obs_space_size = (agent_info_dim + 0) + 41 * self.embed_dim + 4096 + 10 * self.embed_dim + 5 # +5 for prviouse actions
 
         self.shared_layers = nn.Sequential(
             nn.Linear(obs_space_size, 256),
@@ -48,13 +48,15 @@ class ActorCriticNetwork(nn.Module):
 
 
     def obs_preprocessing(self, obs):
-
         item_embedding = self.item_embedder(obs['Inventory'])
         block_embedding = self.block_embedder(obs['Blocks'])
         entity_embedding = self.entity_embedder(obs['Entities'])
         agent_info = obs['AgentInfo']
+        prevActions = obs['PrevActions']
         if len(agent_info.shape) == 1:
             agent_info = agent_info.unsqueeze(0)
+        if len(prevActions.shape) == 1:
+            prevActions = prevActions.unsqueeze(0)
 
         look_slice = agent_info[:, -9:]
         agent_info = agent_info[:, :-9]
@@ -88,7 +90,7 @@ class ActorCriticNetwork(nn.Module):
         entity_x = torch.flatten(entity_embedding, start_dim=1)
 
 
-        return torch.cat([agent_info, item_x, block_x, entity_x], dim=-1)
+        return torch.cat([agent_info, item_x, block_x, entity_x, prevActions], dim=-1)
 
 
     def get_policy_logits(self, x):

@@ -100,6 +100,11 @@ public class Minecraftaimod implements ModInitializer {
 
     boolean spawnPlayer = false;
 
+    Deque<Vec3d> pastPositions = new ArrayDeque<>();
+    final int WINDOW = 10; // 10 ticks = 0.5 sec
+    int lastMovement = 0;
+
+
     @Override
     public void onInitialize() {
 
@@ -356,6 +361,11 @@ public class Minecraftaimod implements ModInitializer {
         Vec3d currentPos = new Vec3d(agent.getX(), agent.getY(), agent.getZ());
         int REGION_SIZE = 2;
 
+        pastPositions.add(currentPos);
+        if(pastPositions.size() > WINDOW){
+            pastPositions.removeFirst();
+        }
+
         if (lastPos == null) {
             lastPos = currentPos;
             agentPrevhealth = agent.getHealth();
@@ -370,8 +380,8 @@ public class Minecraftaimod implements ModInitializer {
         // ------------------------
         //  No movement PENALTY
         // ------------------------
-        if (Math.abs(dx) < 0.02 && Math.abs(dz) < 0.02)
-            reward -= 0.01;
+//        if (Math.abs(dx) < 0.02 && Math.abs(dz) < 0.02)
+//            reward -= 0.01;
 
         // ONLY reward if dist > threshold => avoids wall-collisions giving reward
 //        if (dist > 0.05)
@@ -385,13 +395,13 @@ public class Minecraftaimod implements ModInitializer {
         int rz = (int)Math.floor(currentPos.z / REGION_SIZE);
 
         boolean isNew = visitedRegion.add(new Tuple3(rx, 0, rz));
-        if (isNew) reward += 0.8;
+        if (isNew) reward += 3.0;
 
         if(nearestWood != null) {
             double current_dist_to_wood = Math.sqrt(Math.pow(currentPos.x - nearestWood.getX(), 2) + Math.pow(currentPos.z - nearestWood.getZ(), 2));
             double prev_dist_to_wood = Math.sqrt(Math.pow(lastPos.x - nearestWood.getX(), 2) + Math.pow(lastPos.z - nearestWood.getZ(), 2));
             double diff = (prev_dist_to_wood - current_dist_to_wood);
-            if(diff * 2.0 > 0.01 && isNew)
+            if(diff * 2.0 > 0.3)
                 reward += diff * 2.0;
 
             if(current_dist_to_wood <= 2.5){
@@ -403,28 +413,42 @@ public class Minecraftaimod implements ModInitializer {
 
 
         // forward movement reward
-        Vec3d move = currentPos.subtract(lastPos);
-        Vec3d moveFlat = new Vec3d(move.x, 0, move.z);
-
         Vec3d forward = agent.getRotationVec(1F);
         Vec3d forwardFlat = new Vec3d(forward.x, 0, forward.z).normalize();
 
-        double forwardProgress = forwardFlat.dotProduct(moveFlat);
+        Vec3d oldest = pastPositions.getFirst();
+        Vec3d netMove = currentPos.subtract(oldest);
+        Vec3d netMoveFlat = new  Vec3d(netMove.getX(), 0, netMove.getZ());
+
+        double netForwardProg = forwardFlat.dotProduct(netMoveFlat);
 
         boolean jumped = actions.get(1) > 0.5;
         boolean onGround = agent.isOnGround();
 
 
-        if (!jumped && forwardProgress > 0.02 && onGround) {
-            reward += forwardProgress * 2.0;
+        if (!jumped && netForwardProg > 2.0 && onGround) {
+            reward += netForwardProg * 1.2;
         }
 
+        double movement = Math.sqrt(netMove.x * netMove.x + netMove.z * netMove.z);
+
+        // Encourage agent to make substantial movement. Longer not good movement, punish more
+        if(movement > 0.05 && onGround){
+            lastMovement = 0;
+        }
+
+        reward -= 0.01 * lastMovement;
+
+        lastMovement += 1;
+
+//        System.out.println("prog: " + netForwardProg);
+
 // Penalize ANY airtime
-        if (!onGround) {
-            reward -= 0.1;   // light penalty
+        if (!onGround && !agent.isInLava()) {
+            reward -= 0.05;   // light penalty
         }
         if (actions.get(1) > 0.5)
-            reward -= 0.5;
+            reward -= 0.3;
 
         boolean inLava = agent.isInLava();
 
@@ -437,6 +461,10 @@ public class Minecraftaimod implements ModInitializer {
         // ------------------------
         if (agent.getHealth() < agentPrevhealth)
             reward -= 1.0;
+
+        if(dist < 0.004 && netForwardProg > 0.1){
+            reward -= 0.02;
+        }
 
         // ------------------------
         // SAVE LAST

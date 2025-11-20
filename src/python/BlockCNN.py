@@ -26,19 +26,23 @@ class BlockCNN(nn.Module):
             nn.MaxPool3d(kernel_size=2, stride=2),                  # (batch_size, 128, 4, 2, 4)
         )
 
+        self.proj1 = nn.Conv3d(in_channels, 64, kernel_size=1)
+        self.proj2 = nn.Conv3d(64, 128, kernel_size=1)
+
     # def forward(self, x):
     #     x = self.cnn(x)
     #
     #     return x.flatten(start_dim=1) # (batch_size, 4096)
 
     def forward(self, x):
+        inpt = x
         #### Block 1 ####
         x = self.cnn[0](x)  # conv1
         self.feat1 = x.detach().cpu()
 
         x = self.cnn[1](x)  # relu1
 
-        skip_con = x
+        skip_con = self.proj1(inpt)
 
         x = self.cnn[2](x)  # conv2
         self.feat2 = x.detach().cpu()
@@ -50,12 +54,13 @@ class BlockCNN(nn.Module):
         self.feat3 = x.detach().cpu()
 
         ##### BLOCK 2 ####
+        inpt = x
         x = self.cnn[5](x)  # conv3
         self.feat4 = x.detach().cpu()
 
         x = self.cnn[6](x)  # relu3
 
-        skip_con = x
+        skip_con = self.proj2(inpt)
 
         x = self.cnn[7](x)  # conv4
         self.feat5 = x.detach().cpu()

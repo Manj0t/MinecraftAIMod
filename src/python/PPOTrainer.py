@@ -3,11 +3,11 @@ from torch import nn
 from torch import optim
 from torch.distributions import Categorical, Bernoulli
 
-batch_size = 512
+batch_size = 256
 
 
 class PPOTrainer():
-    def __init__(self, actor_critic, ppo_clip_val=0.2, target_kl_div=0.25, max_policy_train_iters=10, value_train_iters=10, policy_lr=5e-5):
+    def __init__(self, actor_critic, ppo_clip_val=0.2, target_kl_div=0.1, max_policy_train_iters=10, value_train_iters=10, policy_lr=3e-4):
         self.ac = actor_critic
         self.ppo_clip_val = ppo_clip_val
         self.target_kl_div = target_kl_div
@@ -44,6 +44,7 @@ class PPOTrainer():
                     'Blocks': obs['Blocks'][i:i+batch_size],
                     'Entities': obs['Entities'][i:i+batch_size],
                     'AgentInfo': obs['AgentInfo'][i:i+batch_size],
+                    'PrevActions' : obs['PrevActions'][i:i+batch_size],
                 }
 
                 batch_act = {

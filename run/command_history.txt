@@ -1,34 +1,3 @@
-/save_state
-/tick rate 120
-/start_training EmpireCreator
-/tick rate 120
-/start_training EmpireCreator
-/tick rate 120
-/start_training EmpireCreator
-/tick rate 120
-/setworldspawn
-/save_state
-/start_training EmpireCreator
-/tick rate 120
-/start_training EmpireCreator
-/tick rate 120
-/start_training Steve
-/setworldspawn
-/tp Steve ~ ~ ~
-/setworldspawn
-/start_training Steve
-/setworldspawn
-/start_training Steve
-/tp Steve ~ ~ ~
-/start_training Steve
-/tp Steve ~ ~ ~
-/start_training Steve
-/tp Steve ~ ~ ~
-/setworldspawn
-/start_training Steve
-/tick rate 120
-/tick rate 20
-/start_training Steve
 /stop_training
 /start_training Steve
 /tick rate 50
@@ -48,3 +17,34 @@
 /start_training Steve
 /tick rate 40
 /setworldspawn
+/save_state
+/start_training Steve
+/stop_training
+/setworldspawn
+/start_training Steve
+/tick rate 40
+/enchant Player244 minecraft:knockback 100
+/setworldspawn
+/start_training Steve
+/setworldspawn
+/start_training EmpireCreator
+/tick rate 40
+/start_training EmpireCreator
+/tick rate 40
+/start_training EmpireCreator
+/tick rate 40
+/start_training EmpireCreator
+/setworldspawn
+/start_training EmpireCreator
+/setworldspawn
+/start_training EmpireCreator
+/setworldspawn
+/start_training EmpireCreator
+/setworldspawn 380 70 -161
+/start_training EmpireCreator
+/tick rate 40
+/start_training EmpireCreator
+/setworldspawn
+/start_training EmpireCreator
+/setworldspawn
+/start_training EmpireCreator

@@ -13,17 +13,21 @@ DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
 DEBUG_CNN = False
+SAVE_STATE = False
 
 def start_debugging():
     threading.Thread(target=debug_input_listener, daemon=True).start()
 
 def debug_input_listener():
     global DEBUG_CNN
+    global SAVE_STATE
     print("-> CNN Debugger listening... Enter 'd' anytime to dump feature maps.")
     while True:
         user_input = sys.stdin.readline().strip()
         if user_input.lower() == "d":
             DEBUG_CNN = True
+        elif user_input.lower() == "s":
+            SAVE_STATE = True
 
 def save_slice(tensor, title, filename, depth_axis=0, slice_index=None, cmap="viridis"):
     """
@@ -92,8 +96,21 @@ def save_feature_maps(feature_tensor, name):
     print(f"Saved {name} → {out_path}")
 
 
-def debug_cnn(model, block_ids_tensor):
+def debug_cnn(model, block_ids_tensor, ppo, ep_rewards, i, curr_best):
     global DEBUG_CNN
+    global SAVE_STATE
+
+    if SAVE_STATE:
+        save_path = f"models/Saved_State_{curr_best:.2f}.pth"
+        torch.save({
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": ppo.optimizer.state_dict(),
+            "rewards": ep_rewards,
+            "best_reward": curr_best,
+            "iter": i,
+        }, save_path)
+        SAVE_STATE = False
+        print("Saved model!")
 
     if not DEBUG_CNN:
         return

@@ -23,7 +23,7 @@ class ActorCriticNetwork(nn.Module):
         self.block_transformer = MinecraftTransformer(self.embed_dim)
         self.block_cnn = BlockCNN(self.embed_dim)
 
-        obs_space_size = (agent_info_dim + 0) + 41 * self.embed_dim + 4096 + 10 * self.embed_dim + 5 # +5 for prviouse actions
+        obs_space_size = (agent_info_dim + 0) + 41 * self.embed_dim + 4096 + 10 * self.embed_dim + 4 # +5 for prviouse actions
 
         self.shared_layers = nn.Sequential(
             nn.Linear(obs_space_size, 256),
@@ -33,9 +33,9 @@ class ActorCriticNetwork(nn.Module):
             nn.Linear(256, 128),
             nn.ReLU(),
         )
-
-        self.movement_policy = nn.Linear(128, 5)    # forward, backward, left, right, none
-        self.jump_policy = nn.Linear(128, 1)        # Do or don't jump
+                                                    #    0   ,   1     ,  2  ,  3   ,       4     ,  5  ,  6
+        self.movement_policy = nn.Linear(128, 7)    # forward, backward, left, right, forward jump, jump, none
+        # self.jump_policy = nn.Linear(128, 1)        # Do or don't jump
         self.item_use_policy = nn.Linear(128, 3)    # Left click (attack), right click (use item), neither
         self.hotbar_policy = nn.Linear(128, 9)      # Active hotbar slot
         self.pan_camera = nn.Linear(128, 5)         # Pan camera up, down, left, right
@@ -95,14 +95,14 @@ class ActorCriticNetwork(nn.Module):
 
     def get_policy_logits(self, x):
         movement_policy_logits = self.movement_policy(x)
-        jump_policy_logits = self.jump_policy(x)
+        # jump_policy_logits = self.jump_policy(x)
         item_use_policy_logits = self.item_use_policy(x)
         hotbar_policy_logits = self.hotbar_policy(x)
         pan_camera_logits = self.pan_camera(x)
 
         policy_logits = {
             'movement': movement_policy_logits,
-            'jump': jump_policy_logits,
+            # 'jump': jump_policy_logits,
             'item_use': item_use_policy_logits,
             'hotbar': hotbar_policy_logits,
             'pan_camera' : pan_camera_logits

@@ -15,7 +15,7 @@ from CNNDebugger import debug_cnn
 
 
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-prevActions = torch.zeros(5, dtype=torch.float32).to(DEVICE)
+prevActions = torch.zeros(4, dtype=torch.float32).to(DEVICE)
 # def discount_rewards(rewards, gamma=0.99):
 #     reward_t = [float(rewards[-1])]
 #     for t in reversed(range(len(rewards) - 1)):
@@ -98,7 +98,7 @@ def take_step(action, max_steps, i):
     done = struct.unpack(">i", conn.recv(4))[0]
 
     if done:
-        prevActions = torch.zeros(5, dtype=torch.float32).to(DEVICE)
+        prevActions = torch.zeros(4, dtype=torch.float32).to(DEVICE)
 
     # Ending rollout
     if i == max_steps - 1:
@@ -136,13 +136,17 @@ def rollout(model, ppo, ep_rewards, ppo_iter, curr_best, max_steps=2048):
         "AgentInfoObs": [],
         "PrevActionsObs" : [],
         "movement": [],
-        "jump": [],
+        # "jump": [],
         "item_use": [],
         "hotbar": [],
         "pan_cam": [],
         "reward": [],
         "value": [],
         "log_prob": [],
+        "movement_log_prob": [],
+        "item_use_log_prob": [],
+        "hotbar_log_prob": [],
+        "pan_cam_log_prob": [],
         "done": []
     }  # obs, act, reward, value, act_log_prob, dones
 
@@ -158,10 +162,10 @@ def rollout(model, ppo, ep_rewards, ppo_iter, curr_best, max_steps=2048):
             logits_dict, value = model(obs)
 
 
-        logits_dict['jump'] = logits_dict['jump'].squeeze(-1)
+        # logits_dict['jump'] = logits_dict['jump'].squeeze(-1)
 
         movement_dist = Categorical(logits=logits_dict['movement'])
-        jump_dist = Bernoulli(logits=logits_dict['jump'])
+        # jump_dist = Bernoulli(logits=logits_dict['jump'])
         item_use_dist = Categorical(logits=logits_dict['item_use'])
         hotbar_dist = Categorical(logits=logits_dict['hotbar'])
         pan_cam_dist = Categorical(logits=logits_dict['pan_camera'])
@@ -171,20 +175,20 @@ def rollout(model, ppo, ep_rewards, ppo_iter, curr_best, max_steps=2048):
         # print("Jump prob mean:", torch.sigmoid(jump_logits).mean().item())
 
         movement_act = movement_dist.sample()
-        jump_act = jump_dist.sample()
+        # jump_act = jump_dist.sample()
         item_use_act = item_use_dist.sample()
         hotbar_act = hotbar_dist.sample()
         pan_cam_act = pan_cam_dist.sample()
 
         movement_log_prob = movement_dist.log_prob(movement_act)
-        jump_log_prob = jump_dist.log_prob(jump_act)
+        # jump_log_prob = jump_dist.log_prob(jump_act)
         item_use_log_prob = item_use_dist.log_prob(item_use_act)
         hotbar_log_prob = hotbar_dist.log_prob(hotbar_act)
         pan_cam_log_prob = pan_cam_dist.log_prob(pan_cam_act)
 
         act_log_prob = (
                 movement_log_prob +
-                jump_log_prob +
+                # jump_log_prob +
                 item_use_log_prob +
                 hotbar_log_prob +
                 pan_cam_log_prob
@@ -213,20 +217,24 @@ def rollout(model, ppo, ep_rewards, ppo_iter, curr_best, max_steps=2048):
         rollout_buffer['AgentInfoObs'].append(obs['AgentInfo'].detach().cpu())
         rollout_buffer['PrevActionsObs'].append(obs['PrevActions'].detach().cpu())
         rollout_buffer["movement"].append(movement_act.detach().cpu())
-        rollout_buffer["jump"].append(jump_act.detach().cpu())
+        # rollout_buffer["jump"].append(jump_act.detach().cpu())
         rollout_buffer["item_use"].append(item_use_act.detach().cpu())
         rollout_buffer["hotbar"].append(hotbar_act.detach().cpu())
         rollout_buffer["pan_cam"].append(pan_cam_act.detach().cpu())
         rollout_buffer["value"].append(value)
         rollout_buffer["log_prob"].append(act_log_prob)
+        rollout_buffer["movement_log_prob"].append(movement_log_prob.detach().cpu())
+        rollout_buffer["item_use_log_prob"].append(item_use_log_prob.detach().cpu())
+        rollout_buffer["hotbar_log_prob"].append(hotbar_log_prob.detach().cpu())
+        rollout_buffer["pan_cam_log_prob"].append(pan_cam_log_prob.detach().cpu())
 
         movement = int(movement_act.item())
-        jump = int(jump_act.item())
+        # jump = int(jump_act.item())
         item_use = int(item_use_act.item())
         hotbar = int(hotbar_act.item())
         pan_cam = int(pan_cam_act.item())
 
-        action = [movement, jump, item_use, hotbar, pan_cam]
+        action = [movement, item_use, hotbar, pan_cam]
 
         next_obs, reward, done = take_step(action, max_steps, i)
 
@@ -241,7 +249,7 @@ def rollout(model, ppo, ep_rewards, ppo_iter, curr_best, max_steps=2048):
             # obs = get_state()
 
     # logits is dict, won't work
-    for key in ["InventoryObs", "EntitiesObs", "AgentInfoObs",  "PrevActionsObs", "log_prob", "value", "reward", "done", "jump"]:
+    for key in ["InventoryObs", "EntitiesObs", "AgentInfoObs",  "PrevActionsObs", "log_prob", "movement_log_prob", "item_use_log_prob", "hotbar_log_prob", "pan_cam_log_prob", "value", "reward", "done"]:
         rollout_buffer[key] = np.array(rollout_buffer[key], dtype=np.float32)
     for key in ["movement", "item_use", "hotbar", "pan_cam", "BlocksObs"]:
         rollout_buffer[key] = np.array(rollout_buffer[key], dtype=np.int64)

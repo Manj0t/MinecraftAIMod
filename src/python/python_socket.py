@@ -13,7 +13,7 @@ from CNNDebugger import start_debugging
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 HOST = '127.0.0.1'
-PORT = 5000
+PORT = 5001
 
 curr_best = float('-inf')
 ep_rewards = []
@@ -49,8 +49,10 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
     ppo = PPOTrainer(model)
 
-    load_path = "models/Saved_State_1131.35.pth"
-
+    # load_path = "models/iter_saves/continuing_25.pth"
+    load_path = "models/Saved_State_-242.56_new_maze.pth"
+    # Saved_State_1131
+    # .35.pth
     if os.path.exists(load_path):
         print(f"🔁 Loading checkpoint: {load_path}")
         checkpoint = torch.load(load_path, map_location=DEVICE)
@@ -85,6 +87,14 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
         model_dict.update(filtered_dict)
         model.load_state_dict(model_dict, strict=False)
+
+        # pan_ckpt = torch.load("models/curr_running_test.pth", map_location=DEVICE)
+
+        # If the layer names match exactly, just do this:
+        # model.pan_camera.load_state_dict({
+        #     "weight": pan_ckpt["model_state_dict"]["pan_camera.weight"],
+        #     "bias": pan_ckpt["model_state_dict"]["pan_camera.bias"]
+        # })
 
         # with torch.no_grad():
         #     model.jump_policy.weight.zero_()
@@ -139,9 +149,12 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         ep_rewards.append(ep_reward)
         print_cuda_mem("After Rollout")
 
-        if ep_reward >= curr_best:
-            curr_best = ep_reward
-            save_path = f"models/model_best_cnn{curr_best:.2f}.pth"
+        if ep_reward >= curr_best or i % 5 == 0:
+            if ep_reward >= curr_best:
+                curr_best = ep_reward
+                save_path = f"models/model_best_cnn{curr_best:.2f}.pth"
+            else:
+                save_path = f"models/iter_saves/model_itr_{i}.pth"
             torch.save({
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": ppo.optimizer.state_dict(),
@@ -168,7 +181,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
         act = {
             'movement'  : torch.tensor(train_data['movement'][permute_idxs], dtype=torch.int64, device=DEVICE),
-            'jump'      : torch.tensor(train_data['jump'][permute_idxs], dtype=torch.float32, device=DEVICE),
+            # 'jump'      : torch.tensor(train_data['jump'][permute_idxs], dtype=torch.float32, device=DEVICE),
             'item_use'  : torch.tensor(train_data['item_use'][permute_idxs], dtype=torch.int64, device=DEVICE),
             'hotbar'    : torch.tensor(train_data['hotbar'][permute_idxs], dtype=torch.int64, device=DEVICE),
             'pan_cam'   : torch.tensor(train_data['pan_cam'][permute_idxs], dtype=torch.int64, device=DEVICE)
@@ -176,11 +189,21 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
         advantages = torch.tensor(train_data['advantage'][permute_idxs], dtype=torch.float32, device=DEVICE)
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-        log_probs = torch.tensor(train_data['log_prob'][permute_idxs], dtype=torch.float32, device=DEVICE)
+        summed_log_probs = torch.tensor(train_data['log_prob'][permute_idxs], dtype=torch.float32, device=DEVICE)
+        log_probs = {
+            "old_movement_lp" : torch.tensor(train_data['movement_log_prob'][permute_idxs], dtype=torch.float32, device=DEVICE),
+            "old_item_use_lp" : torch.tensor(train_data['item_use_log_prob'][permute_idxs], dtype=torch.float32, device=DEVICE),
+            "old_hotbar_lp"   : torch.tensor(train_data['hotbar_log_prob'][permute_idxs], dtype=torch.float32, device=DEVICE),
+            "old_pan_cam_lp"  : torch.tensor(train_data['pan_cam_log_prob'][permute_idxs], dtype=torch.float32, device=DEVICE),
+        }
+        # "movement_log_prob": [],
+        #         "item_use_log_prob": [],
+        #         "hotbar_log_prob": [],
+        #         "pan_cam_log_prob": [],
         returns = torch.tensor(train_data['returns'][permute_idxs], dtype=torch.float32, device=DEVICE)
         print_cuda_mem("Before Training")
 
-        ppo.train_policy(obs, act, log_probs, advantages, returns)
+        ppo.train_policy(obs, act, log_probs, summed_log_probs, advantages, returns)
         # ppo.train_value(obs, returns)
         print('********************************')
         print('****** Completed Training ******')

@@ -104,6 +104,13 @@ public class Minecraftaimod implements ModInitializer {
     final int WINDOW = 10; // 10 ticks = 0.5 sec
     int lastMovement = 0;
 
+    int prevMoveAction = -1;
+    boolean isStuck = false;
+
+    int forwardConsistency = 0;
+
+    int stuckCounter = 0;
+
 
     @Override
     public void onInitialize() {
@@ -125,7 +132,7 @@ public class Minecraftaimod implements ModInitializer {
                                             System.out.println("INFO: Made process");
 
 
-                                            socket = new Socket("localhost", 5000);
+                                            socket = new Socket("localhost", 5001);
                                             socket.setTcpNoDelay(true);
                                             socket.setSoTimeout(0);
 
@@ -160,7 +167,8 @@ public class Minecraftaimod implements ModInitializer {
                                         movementActions.put(1, this::moveBackward);
                                         movementActions.put(2, this::moveLeft);
                                         movementActions.put(3, this::moveRight);
-                                        movementActions.put(4, null);
+                                        movementActions.put(4, this::moveForward);
+                                        movementActions.put(5, null);
 
                                         panCam.put(0, this::lookUp);
                                         panCam.put(1, this::lookDown);
@@ -234,11 +242,8 @@ public class Minecraftaimod implements ModInitializer {
                         for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
                             if (agentName.equals(player.getName().getString().toLowerCase())) {
                                 agent = player;
-                                lastPos = null;
                                 world = agent.getEntityWorld();
-                                lastY = null;
-                                visitedRegion.clear();
-                                visitedWood.clear();
+                                resetPlayer();
                                 server.getCommandManager().parseAndExecute(server.getCommandSource(), "/gamemode survival " + agentName);
                                 System.out.println("found");
                                 break;
@@ -246,6 +251,7 @@ public class Minecraftaimod implements ModInitializer {
                         }
                         if (agent == null) return;
                     }
+                    if (agent == null) return;
                     // Agent Position Information
                     if (resetPlayer) {
                         server.getCommandManager().parseAndExecute(server.getCommandSource(), "/player " + agentName + " kill");
@@ -253,7 +259,10 @@ public class Minecraftaimod implements ModInitializer {
                         waitForNextRollout = true;
                         return;
                     }
-                    if(waitForNextRollout) {
+            agent.getHungerManager().setFoodLevel(20);
+            agent.getHungerManager().setSaturationLevel(20f);
+
+            if(waitForNextRollout) {
                         lastPos = null;
                         try {
                             System.out.println("INFO: Waiting for next rollout");
@@ -261,10 +270,7 @@ public class Minecraftaimod implements ModInitializer {
                             int startRollout = input.readInt();
                             spawnPlayer = true;
                             server.getCommandManager().parseAndExecute(server.getCommandSource(), "/time set day");
-                            visitedRegion.clear();
-                            visitedWood.clear();
-                            lastY = null;
-                            lastPos = null;
+                            resetPlayer();
                             //                            loop += 1;
                             //                            if(loop % 5 == 0 ){
                             //                                if(isLavaArea)
@@ -317,6 +323,7 @@ public class Minecraftaimod implements ModInitializer {
 
                             recieveAction = false;
                             sendReward = true;
+                            if (agent == null) return;
                         } catch (Exception e) {
 
                         }
@@ -356,137 +363,219 @@ public class Minecraftaimod implements ModInitializer {
         });
 
     }
-
+    private void resetPlayer() {
+        visitedRegion.clear();
+        visitedWood.clear();
+        lastY = null;
+        lastPos = null;
+        lastMovement = 0;
+        prevMoveAction = -1;
+        isStuck = false;
+        forwardConsistency = 0;
+        stuckCounter = 0;
+    }
     private double getReward(List<Float> actions) {
-        Vec3d currentPos = new Vec3d(agent.getX(), agent.getY(), agent.getZ());
-        int REGION_SIZE = 2;
+        try {
+            Vec3d currentPos = new Vec3d(agent.getX(), agent.getY(), agent.getZ());
+            int REGION_SIZE = 1;
 
-        pastPositions.add(currentPos);
-        if(pastPositions.size() > WINDOW){
-            pastPositions.removeFirst();
-        }
+            pastPositions.add(currentPos);
+            if (pastPositions.size() > WINDOW) {
+                pastPositions.removeFirst();
+            }
 
-        if (lastPos == null) {
-            lastPos = currentPos;
-            agentPrevhealth = agent.getHealth();
-            return 0.0;
-        }
+            if (lastPos == null) {
+                lastPos = currentPos;
+                agentPrevhealth = agent.getHealth();
+                return 0.0;
+            }
 
-        double reward = 0.0;
+            double reward = 0.0;
 
-        double dx = currentPos.x - lastPos.x;
-        double dz = currentPos.z - lastPos.z;
-        double dist = Math.sqrt(dx*dx + dz*dz);
-        // ------------------------
-        //  No movement PENALTY
-        // ------------------------
+            double dx = currentPos.x - lastPos.x;
+            double dz = currentPos.z - lastPos.z;
+            double dist = Math.sqrt(dx * dx + dz * dz);
+            // ------------------------
+            //  No movement PENALTY
+            // ------------------------
 //        if (Math.abs(dx) < 0.02 && Math.abs(dz) < 0.02)
 //            reward -= 0.01;
 
-        // ONLY reward if dist > threshold => avoids wall-collisions giving reward
+            // ONLY reward if dist > threshold => avoids wall-collisions giving reward
 //        if (dist > 0.05)
 //            reward += dist * 1.0;
 
-        // ------------------------
-        // Region explor
-        // ------------------------
-        int rx = (int)Math.floor(currentPos.x / REGION_SIZE);
-        int ry = (int)Math.floor(currentPos.y / REGION_SIZE);
-        int rz = (int)Math.floor(currentPos.z / REGION_SIZE);
+            // ------------------------
+            // Region explor
+            // ------------------------
+            int rx = (int) Math.floor(currentPos.x / REGION_SIZE);
+            int ry = (int) Math.floor(currentPos.y / REGION_SIZE);
+            int rz = (int) Math.floor(currentPos.z / REGION_SIZE);
 
-        boolean isNew = visitedRegion.add(new Tuple3(rx, 0, rz));
-        if (isNew) reward += 3.0;
+            boolean isNew = visitedRegion.add(new Tuple3(rx, 0, rz));
+            if (isNew) reward += 2.0;
 
-        if(nearestWood != null) {
-            double current_dist_to_wood = Math.sqrt(Math.pow(currentPos.x - nearestWood.getX(), 2) + Math.pow(currentPos.z - nearestWood.getZ(), 2));
-            double prev_dist_to_wood = Math.sqrt(Math.pow(lastPos.x - nearestWood.getX(), 2) + Math.pow(lastPos.z - nearestWood.getZ(), 2));
-            double diff = (prev_dist_to_wood - current_dist_to_wood);
-            if(diff * 2.0 > 0.3)
-                reward += diff * 2.0;
+//            if (nearestWood != null) {
+//                double current_dist_to_wood = Math.sqrt(Math.pow(currentPos.x - nearestWood.getX(), 2) + Math.pow(currentPos.z - nearestWood.getZ(), 2));
+//                double prev_dist_to_wood = Math.sqrt(Math.pow(lastPos.x - nearestWood.getX(), 2) + Math.pow(lastPos.z - nearestWood.getZ(), 2));
+//                double diff = (prev_dist_to_wood - current_dist_to_wood);
+//                if (diff * 2.0 > 0.3)
+//                    reward += diff * 2.0;
+//
+//                if (current_dist_to_wood <= 2.5) {
+//                    visitedWood.add(new Tuple3(nearestWood.getX(), nearestWood.getY(), nearestWood.getZ()));
+//                    nearestWood = null;
+//                }
+//            }
 
-            if(current_dist_to_wood <= 2.5){
-                visitedWood.add(new Tuple3(nearestWood.getX(), nearestWood.getY(), nearestWood.getZ()));
-                nearestWood = null;
+
+            // forward movement reward
+            Vec3d forward = agent.getRotationVec(1F);
+            Vec3d forwardFlat = new Vec3d(forward.x, 0, forward.z).normalize();
+
+            Vec3d oldest = pastPositions.getFirst();
+            Vec3d netMove = currentPos.subtract(oldest);
+            Vec3d netMoveFlat = new Vec3d(netMove.getX(), 0, netMove.getZ());
+
+            double netForwardProg = forwardFlat.dotProduct(netMoveFlat);
+
+            boolean jumped = actions.getFirst() == 4 || actions.getFirst() == 5;
+            boolean onGround = agent.isOnGround();
+
+
+            if (!jumped && netForwardProg > 2.0 && onGround) {
+                reward += netForwardProg * 0.03;
+            } else if (!jumped && netForwardProg > 0.05 && onGround) reward += netForwardProg * 0.02;
+
+            double movement = Math.sqrt(netMove.x * netMove.x + netMove.z * netMove.z);
+
+            // Encourage agent to make substantial movement. Longer not good movement, punish more
+            if (movement > 0.05 && onGround) {
+                lastMovement = 0;
             }
-        }
 
+            reward -= 0.01 * lastMovement;
 
-
-        // forward movement reward
-        Vec3d forward = agent.getRotationVec(1F);
-        Vec3d forwardFlat = new Vec3d(forward.x, 0, forward.z).normalize();
-
-        Vec3d oldest = pastPositions.getFirst();
-        Vec3d netMove = currentPos.subtract(oldest);
-        Vec3d netMoveFlat = new  Vec3d(netMove.getX(), 0, netMove.getZ());
-
-        double netForwardProg = forwardFlat.dotProduct(netMoveFlat);
-
-        boolean jumped = actions.get(1) > 0.5;
-        boolean onGround = agent.isOnGround();
-
-
-        if (!jumped && netForwardProg > 2.0 && onGround) {
-            reward += netForwardProg * 1.2;
-        }
-
-        double movement = Math.sqrt(netMove.x * netMove.x + netMove.z * netMove.z);
-
-        // Encourage agent to make substantial movement. Longer not good movement, punish more
-        if(movement > 0.05 && onGround){
-            lastMovement = 0;
-        }
-
-        reward -= 0.01 * lastMovement;
-
-        lastMovement += 1;
+            lastMovement += 1;
 
 //        System.out.println("prog: " + netForwardProg);
 
 // Penalize ANY airtime
-        if (!onGround && !agent.isInLava()) {
-            reward -= 0.05;   // light penalty
+            if (!onGround && !agent.isInLava()) {
+                reward -= 0.05;   // light penalty
+            }
+            if (jumped)
+                reward -= 0.1;
+
+            boolean inLava = agent.isInLava();
+
+            if (inLava || agent.isOnFire()) {
+                reward -= 1.0;
+            }
+
+            // ------------------------
+            // SMALL HEALTH LOSS PENALTY
+            // ------------------------
+            if (agent.getHealth() < agentPrevhealth)
+                reward -= 1.0;
+
+            float chosenMovement = actions.getFirst();
+
+            boolean isTryingToMove = chosenMovement <= 4;  // movement actions only
+            boolean collided = agent.horizontalCollision; // hit a wall
+
+// 1. Detect current stuck frame
+
+            if (isTryingToMove && collided) {
+                stuckCounter++;
+
+                // small penalty every frame of collision
+                reward -= 0.25;
+                // if stuck for a while, apply a bigger penalty ONCE
+                if (stuckCounter == 3) {
+                    reward -= 1.0;
+                }
+
+            } else {
+                // only treat as an unstuck event if previously stuck for many frames
+                if (stuckCounter >= 3) {
+                    reward += 0.5;
+                }
+
+                stuckCounter = 0;  // reset
+            }
+
+// 2. If stuck for 5+ frames in a row, mark as "really stuck"
+//            if (stuckCounter > 5 && !isStuck) {
+//                isStuck = true;
+//                reward -= 1.0;        // big penalty for persistent stuckness
+//                System.out.println("STUCK");
+//            }
+
+// 3. Consider "unstuck" when movement resumes
+            if (isStuck && dist > 0.05) {
+                isStuck = false;
+                reward += 0.5;        // reward escaping stuckness
+                stuckCounter = 0;
+                System.out.println("UNSTUCK");
+            }
+
+            int repeatedPrevAction = prevMoveAction;
+            if (repeatedPrevAction == 4) repeatedPrevAction = 0; // 0 is move forward, 4 is move forward and jump. Either is fine to sample since they both cause forward motion
+
+//            if(chosenMovement == repeatedPrevAction && !isStuck && dist > 0.03){
+//                forwardConsistency++;
+//                reward += Math.min(forwardConsistency, 5.0) * 0.03;
+//            }else{
+//                forwardConsistency = 0;
+//            }
+
+            if(forwardConsistency >= 20)
+                forwardConsistency = 0;
+
+
+//        reward -= Math.abs(agent.getPitch()) * 0.01;
+
+            reward += (1 - Math.abs(agent.getPitch()) / 45.0) * 0.05;
+
+
+            // ------------------------
+            // SAVE LAST
+            // ------------------------
+            lastPos = currentPos;
+            agentPrevhealth = agent.getHealth();
+            return reward;
+        }catch (Exception e){
+            return 0.0;
         }
-        if (actions.get(1) > 0.5)
-            reward -= 0.3;
-
-        boolean inLava = agent.isInLava();
-
-        if (inLava || agent.isOnFire()) {
-            reward -= 1.0;
-        }
-
-        // ------------------------
-        // SMALL HEALTH LOSS PENALTY
-        // ------------------------
-        if (agent.getHealth() < agentPrevhealth)
-            reward -= 1.0;
-
-        if(dist < 0.004 && netForwardProg > 0.1){
-            reward -= 0.02;
-        }
-
-        // ------------------------
-        // SAVE LAST
-        // ------------------------
-        lastPos = currentPos;
-        agentPrevhealth = agent.getHealth();
-        return reward;
     }
 
     private void applyAction(List<Float> actions) {
+        if (agent == null) return;
         int movement = actions.get(0).intValue();
-        int jump = actions.get(1).intValue();
-        int item_use = actions.get(2).intValue();
-        int hotbar_idx = actions.get(3).intValue();
-        int pan_id = actions.get(4).intValue();
+//        int jump = actions.get(1).intValue();
+        int item_use = actions.get(1).intValue();
+        int hotbar_idx = actions.get(2).intValue();
+        int pan_id = actions.get(3).intValue();
 
-        Runnable movementAction = movementActions.get(movement);
+        Runnable movementAction = null;
+
+        if(movement <= 4){ // only care about actual movement, not jumping or standing still
+            prevMoveAction = movement;
+            movementAction = movementActions.get(movement);
+        }else{
+            prevMoveAction = -1;
+        }
         if (movementAction != null) {
             movementAction.run();
         }
 
-        if(jump > 0 && agent.isOnGround()){
+        int jump = 0;
+        if(movement == 4 || movement == 5){
+            jump = 1;
+        }
+
+        if(jump > 0 && agent.isOnGround() || agent.isInLava() || agent.isSubmergedInWater()) {
             agent.jump();
         }
 
@@ -1003,8 +1092,8 @@ public class Minecraftaimod implements ModInitializer {
         Box box = agent.getBoundingBox().expand(agentSearchRadius);
         List<Entity> nearbyEntities = agent.getEntityWorld().getOtherEntities(agent, box);
 
-        for (int i = 0; i < nearbyEntities.size(); i++) {
-            Entity entity = nearbyEntities.get(i);
+        int idx = 0;
+        for (Entity entity : nearbyEntities) {
             if (entity instanceof PlayerEntity || !(entity instanceof LivingEntity)) continue;
 
             int isMonster = entity instanceof Monster ? 1 : 0;
@@ -1012,26 +1101,21 @@ public class Minecraftaimod implements ModInitializer {
             int isPassive = entity instanceof PassiveEntity ? 1 : 0;
             int isUnknown = (isMonster != 1 && isAngerable != 1 && isPassive != 1) ? 1 : 0;
 
-            foundEntities[i][0] = Registries.ENTITY_TYPE.getRawId(entity.getType());
-            foundEntities[i][1] = isMonster;
-            foundEntities[i][2] = isAngerable;
-            foundEntities[i][3] = isPassive;
-            foundEntities[i][4] = isUnknown;
-            foundEntities[i][5] = entity.getX() - agent.getX();
-            foundEntities[i][6] = entity.getY() - agent.getY();
-            foundEntities[i][7] = entity.getZ() - agent.getZ();
+            foundEntities[idx][0] = Registries.ENTITY_TYPE.getRawId(entity.getType());
+            foundEntities[idx][1] = isMonster;
+            foundEntities[idx][2] = isAngerable;
+            foundEntities[idx][3] = isPassive;
+            foundEntities[idx][4] = isUnknown;
+            foundEntities[idx][5] = entity.getX() - agent.getX();
+            foundEntities[idx][6] = entity.getY() - agent.getY();
+            foundEntities[idx][7] = entity.getZ() - agent.getZ();
+
+            idx++;
         }
 
         // Runs and sets default value for no entities if less than 10 entities found
-        for(int i = nearbyEntities.size(); i < 10; i++) {
-            foundEntities[i][0] = 0;
-            foundEntities[i][1] = 0;
-            foundEntities[i][2] = 0;
-            foundEntities[i][3] = 0;
-            foundEntities[i][4] = 0;
-            foundEntities[i][5] = 0;
-            foundEntities[i][6] = 0;
-            foundEntities[i][7] = 0;
+        for(int i = idx; i < 10; i++) {
+            Arrays.fill(foundEntities[i], 0);
         }
 
         return foundEntities;

@@ -1,50 +1,50 @@
-/stop_training
-/start_training Steve
-/tick rate 50
-/start_training Steve
-/tick rate 50
+/start_training EmpireCreator
+/tick rate 40
+/effect give @p saturation 1 255
+/start_training EmpireCreator
+/effect give @p saturation 1 255
+/effect give @p saturation 10 255
+/tick rate 40
+/start_training EmpireCreator
+/player Empirecreator drop all
+/setworldspawn
+/start_training EmpireCreator
+/setworldspawn
+/start_training EmpireCreator
+/tick rate 40
+/start_training EmpireCreator
+/player Empirecreator drop all
+/start_training EmpireCreator
+/player Empirecreator drop all
+/start_training EmpireCreator
+/tick rate 40
+/start_training EmpireCreator
+/tick rate 40
+/start_training EmpireCreator
+/player Empirecreator drop all
+/player Empirecreator dropStack all
 /tick rate 30
-/tick rate 40
-/save_state
-/setworldspawn
-/tick rate 40
-/start_training Steve
-/save_state
-/start_training Steve
-/tick rate 40
-/start_training Steve
-/setworldspawn
-/start_training Steve
-/tick rate 40
-/setworldspawn
-/save_state
-/start_training Steve
-/stop_training
-/setworldspawn
-/start_training Steve
-/tick rate 40
-/enchant Player244 minecraft:knockback 100
-/setworldspawn
-/start_training Steve
+/tick rate 35
+/player Empirecreator dropStack all
+/start_training EmpireCreator
+/player Empirecreator dropStack all
+/start_training EmpireCreator
+/tick rate 35
+/start_training EmpireCreator
+/player Empirecreator dropStack all
 /setworldspawn
 /start_training EmpireCreator
-/tick rate 40
+/tick rate 35
 /start_training EmpireCreator
-/tick rate 40
+/tp Empirecreator ~ ~ ~
+/tick rate 35
 /start_training EmpireCreator
-/tick rate 40
+/tp Empirecreator ~ ~ ~
 /start_training EmpireCreator
-/setworldspawn
+/tp Empirecreator ~ ~ ~
 /start_training EmpireCreator
-/setworldspawn
+/tick rate 35
+/tp Empirecreator ~ ~ ~
 /start_training EmpireCreator
-/setworldspawn
-/start_training EmpireCreator
-/setworldspawn 380 70 -161
-/start_training EmpireCreator
-/tick rate 40
-/start_training EmpireCreator
-/setworldspawn
-/start_training EmpireCreator
-/setworldspawn
+/tick rate 35
 /start_training EmpireCreator

@@ -1,5 +1,6 @@
 package me.sand.minecraftaimod;
 
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import me.sand.minecraftaimod.protobuf.*;
 import net.fabricmc.api.ModInitializer;
@@ -44,6 +45,7 @@ import org.slf4j.LoggerFactory;
 
 import java.awt.*;
 import java.io.*;
+import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.util.*;
@@ -65,6 +67,7 @@ public class Minecraftaimod implements ModInitializer {
 
 
     Socket socket = null;
+    private ServerSocket serverSocket;
     DataInputStream input = null;
     DataOutputStream output = null;
 
@@ -110,6 +113,7 @@ public class Minecraftaimod implements ModInitializer {
     int forwardConsistency = 0;
 
     int stuckCounter = 0;
+    int agentPort = -1;
 
 
     @Override
@@ -119,65 +123,75 @@ public class Minecraftaimod implements ModInitializer {
             dispatcher.register(
                     literal("start_training")
                             .then(argument("agentName", StringArgumentType.string())
-                                    .executes(ctx -> {
-                                        MinecraftServer server = ctx.getSource().getServer();
-                                        agentName = StringArgumentType.getString(ctx, "agentName").toLowerCase();
+                                    .then(argument("agentPort", IntegerArgumentType.integer())
+                                        .executes(ctx -> {
+                                            MinecraftServer server = ctx.getSource().getServer();
+                                            agentName = StringArgumentType.getString(ctx, "agentName").toLowerCase();
+                                            agentPort = IntegerArgumentType.getInteger(ctx, "agentPort");
 
-                                        server.getCommandManager().parseAndExecute(server.getCommandSource(), "/player " + agentName + " spawn");
+                                            server.getCommandManager().parseAndExecute(server.getCommandSource(), "/player " + agentName + " spawn");
+                                            server.getCommandManager().parseAndExecute(server.getCommandSource(), "/tick rate 35");
 
-                                        collecting = true;
-                                        ctx.getSource().sendFeedback(() -> Text.literal("Started training!"), false);
+                                            collecting = true;
+                                            ctx.getSource().sendFeedback(() -> Text.literal("Started training!"), false);
 
-                                        try {
-                                            System.out.println("INFO: Made process");
+                                            try {
+                                                System.out.println("INFO: Made process");
+
+                                                serverSocket = new ServerSocket(agentPort);
+                                                ctx.getSource().sendFeedback(() -> Text.literal("Java Server Ready, Port: " + agentPort + "..."), false);
+                                                socket = serverSocket.accept();
+                                                socket.setTcpNoDelay(true);
+                                                socket.setSoTimeout(0);
+
+                                                input = new DataInputStream(socket.getInputStream());
+                                                output = new DataOutputStream(socket.getOutputStream());
+                                                System.out.println("INFO: Socket Connected");
+
+                                                int agent_info_dim = 21;
+                                                int numItems = Registries.ITEM.size();
+                                                int numBlocks = Registries.BLOCK.size();
+                                                int numEntities = Registries.ENTITY_TYPE.size();
 
 
-                                            socket = new Socket("localhost", 5001);
-                                            socket.setTcpNoDelay(true);
-                                            socket.setSoTimeout(0);
+                                                output.writeInt(agent_info_dim);
+                                                output.writeInt(numItems);
+                                                output.writeInt(numBlocks);
+                                                output.writeInt(numEntities);
+                                                output.flush();
 
-                                            input = new DataInputStream(socket.getInputStream());
-                                            output = new DataOutputStream(socket.getOutputStream());
-                                            System.out.println("INFO: Socket Connected");
+                                                resetPlayer = true;
+    //                                            out.println("exit");
+    //                                            System.out.println("Python replied: " + in.readLine());
 
-                                            int agent_info_dim = 21;
-                                            int numItems = Registries.ITEM.size();
-                                            int numBlocks = Registries.BLOCK.size();
-                                            int numEntities = Registries.ENTITY_TYPE.size();
+    //                                            socket.close();
+                                            } catch (Exception e) {
+                                                e.printStackTrace();
+                                                System.out.println("ERROR: FAILED ");
+                                            }
+                                            System.out.println("Success? ");
+
+                                            movementActions.put(0, this::moveForward);
+                                            movementActions.put(1, this::moveBackward);
+                                            movementActions.put(2, this::moveLeft);
+                                            movementActions.put(3, this::moveRight);
+                                            movementActions.put(4, this::moveForward);
+                                            movementActions.put(5, null);
+
+                                            panCam.put(0, this::lookUp);
+                                            panCam.put(1, this::lookDown);
+                                            panCam.put(2, this::rotateLeft);
+                                            panCam.put(3, this::rotateRight);
+                                            panCam.put(4, null);
+
+                                            return 1;
+                }))));
 
 
-                                            output.writeInt(agent_info_dim);
-                                            output.writeInt(numItems);
-                                            output.writeInt(numBlocks);
-                                            output.writeInt(numEntities);
-                                            output.flush();
-
-                                            resetPlayer = true;
-//                                            out.println("exit");
-//                                            System.out.println("Python replied: " + in.readLine());
-
-//                                            socket.close();
-                                        } catch (Exception e) {
-                                            e.printStackTrace();
-                                            System.out.println("ERROR: FAILED ");
-                                        }
-                                        System.out.println("Success? ");
-
-                                        movementActions.put(0, this::moveForward);
-                                        movementActions.put(1, this::moveBackward);
-                                        movementActions.put(2, this::moveLeft);
-                                        movementActions.put(3, this::moveRight);
-                                        movementActions.put(4, this::moveForward);
-                                        movementActions.put(5, null);
-
-                                        panCam.put(0, this::lookUp);
-                                        panCam.put(1, this::lookDown);
-                                        panCam.put(2, this::rotateLeft);
-                                        panCam.put(3, this::rotateRight);
-                                        panCam.put(4, null);
-
-                                        return 1;
-            })));
+            dispatcher.register(literal("get_port").executes(ctx -> {
+                ctx.getSource().sendFeedback(() -> Text.literal("PORT: " + agentPort), false);
+                return 1;
+            }));
 
 
             dispatcher.register(literal("stop_training").executes(ctx -> {
@@ -193,6 +207,8 @@ public class Minecraftaimod implements ModInitializer {
                 if(socket != null && !socket.isClosed()) {
                     try {
                         socket.close();
+                        serverSocket.close();
+                        ctx.getSource().sendFeedback(() -> Text.literal("Java Socket Closed, Port: " + agentPort + "..."), false);
                         socket = null;
                     }
                     catch (IOException e) {

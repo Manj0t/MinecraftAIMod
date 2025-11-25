@@ -9,202 +9,222 @@ import torch
 import os
 import numpy as np
 from CNNDebugger import start_debugging
+import sys
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 HOST = '127.0.0.1'
-PORT = 5001
+
+num_envs = int(sys.argv[1])
+startPort = 5000
+
+PORTS = [startPort + i for i in range(num_envs)]
+
 
 curr_best = float('-inf')
 ep_rewards = []
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind((HOST, PORT))
-    s.listen()
-    print("Python Server ready...")
 
-    conn, addr = s.accept()
+env_sockets = []
+headers = []
 
-    set_conn(conn)
+for port in PORTS:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.connect((HOST, port))
+    print(f"Connected to env on port {port}")
+    env_sockets.append(sock)
 
     expected = 4 * 4  # 16 bytes
     buffer = b""
     while len(buffer) < expected:
-        chunk = conn.recv(expected - len(buffer))
+        chunk = sock.recv(expected - len(buffer))
         if not chunk:
             raise ConnectionError("Socket closed before receiving full header")
         buffer += chunk
 
     # ✅ Now unpack correctly
     agent_info_dim, num_items, num_blocks, num_entities = struct.unpack(">4i", buffer)
+    headers.append((agent_info_dim, num_items, num_blocks, num_entities))
 
 
-    # print('agent_info_dim: ', agent_info_dim)
-    # print('num_items: ', num_items)
-    # print('num_blocks: ', num_blocks)
-    # print('num_entities: ', num_entities)
+# Create model
+agent_info_dim = headers[0][0]   # assume same
+num_items     = headers[0][1]
+num_blocks    = headers[0][2]
+num_entities  = headers[0][3]
 
-    model = ActorCriticNetwork(agent_info_dim, num_items, num_blocks, num_entities)
-    model.to(DEVICE)
+set_conn(env_sockets, num_envs)
 
-    ppo = PPOTrainer(model)
+# print('agent_info_dim: ', agent_info_dim)
+# print('num_items: ', num_items)
+# print('num_blocks: ', num_blocks)
+# print('num_entities: ', num_entities)
 
-    # load_path = "models/iter_saves/continuing_25.pth"
-    load_path = "models/Saved_State_-242.56_new_maze.pth"
-    # Saved_State_1131
-    # .35.pth
-    if os.path.exists(load_path):
-        print(f"🔁 Loading checkpoint: {load_path}")
-        checkpoint = torch.load(load_path, map_location=DEVICE)
+model = ActorCriticNetwork(agent_info_dim, num_items, num_blocks, num_entities)
+model.to(DEVICE)
 
-        model_dict = model.state_dict()
-        pretrained_dict = checkpoint["model_state_dict"]
+ppo = PPOTrainer(model)
 
-        # ep_rewards = checkpoint["rewards"]
+# load_path = "models/iter_saves/continuing_25.pth"
+load_path = "models/iter_saves/starting_multi_env.pth"
+# Saved_State_1131
+# .35.pth
+iteration = 0
+if os.path.exists(load_path):
+    print(f"🔁 Loading checkpoint: {load_path}")
+    checkpoint = torch.load(load_path, map_location=DEVICE)
 
-        # Filter out weights that don't match shape (like shared_layers.0.weight)
-        filtered_dict = {}
+    model_dict = model.state_dict()
+    pretrained_dict = checkpoint["model_state_dict"]
 
-        for key, params in pretrained_dict.items():
-            if key in model_dict and params.shape == model_dict[key].shape:
-                filtered_dict[key] = params
-            elif key in model_dict:
-                with torch.no_grad():
-                    old_params = params
-                    new = model_dict[key].clone()
+    ep_rewards = checkpoint["rewards"]
+    iteration = checkpoint["iter"]
 
-                    slices = tuple(slice(0, min(o, n)) for o, n in zip(old_params.shape, new.shape))
-                    new[slices] = old_params[slices]
+    # Filter out weights that don't match shape (like shared_layers.0.weight)
+    filtered_dict = {}
 
-                    filtered_dict[key] = new
+    for key, params in pretrained_dict.items():
+        if key in model_dict and params.shape == model_dict[key].shape:
+            filtered_dict[key] = params
+        elif key in model_dict:
+            with torch.no_grad():
+                old_params = params
+                new = model_dict[key].clone()
 
+                slices = tuple(slice(0, min(o, n)) for o, n in zip(old_params.shape, new.shape))
+                new[slices] = old_params[slices]
 
-        skipped_keys = set(pretrained_dict.keys()) - set(filtered_dict.keys()) # Should be empty now
-
-
-        print("✅ Loaded:", filtered_dict.keys())
-        print("⚠️   Skipped:", skipped_keys)
-
-        model_dict.update(filtered_dict)
-        model.load_state_dict(model_dict, strict=False)
-
-        # pan_ckpt = torch.load("models/curr_running_test.pth", map_location=DEVICE)
-
-        # If the layer names match exactly, just do this:
-        # model.pan_camera.load_state_dict({
-        #     "weight": pan_ckpt["model_state_dict"]["pan_camera.weight"],
-        #     "bias": pan_ckpt["model_state_dict"]["pan_camera.bias"]
-        # })
-
-        # with torch.no_grad():
-        #     model.jump_policy.weight.zero_()
-        #     model.jump_policy.bias.fill_(-4.59511985)  # ~25% Bernoulli prob
-
-        # with torch.no_grad():
-        #     # Nudge bias to prefer no jump
-        #     # model.jump_policy.bias.add_(-2.5)
-        #     print("⬇️  Applied anti-jump bias")
-
-        if "optimizer_state_dict" in checkpoint:
-            try:
-                ppo.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-                print("✅ Loaded optimizer state!")
-                # ppo.policy_optimizer.load_state_dict(checkpoint["policy_optimizer_state_dict"])
-                # ppo.value_optimizer.load_state_dict(checkpoint["value_optimizer_state_dict"])
-
-                # VERIFY optimizer shapes match
-                # for old_state, new_param in zip(
-                #         checkpoint["policy_optimizer_state_dict"]["state"].values(),
-                #         model.parameters()):
-                #     for k, v in old_state.items():
-                #         if isinstance(v, torch.Tensor) and v.shape != new_param.shape:
-                #             raise RuntimeError("Optimizer state tensor shape mismatch")
+                filtered_dict[key] = new
 
 
-
-            except Exception as e:
-                print("⚠️ Optimizer state incompatible — resetting optimizer.")
-                # ppo.policy_optimizer = torch.optim.Adam(ppo.policy_optimizer.param_groups[0]["params"])
-                # ppo.value_optimizer = torch.optim.Adam(ppo.value_optimizer.param_groups[0]["params"])
-                ppo.optimizer = torch.optim.Adam(ppo.optimizer.param_groups[0]["params"])
-
-        # curr_best = checkpoint['best_reward']
-        curr_best = float('-inf')
-        ep_rewards.append(curr_best)
-
-        print(f"✅ Loaded model! Best reward: {curr_best}")
-
-    else:
-        print("⚠️ No checkpoint found, training from scratch")
+    skipped_keys = set(pretrained_dict.keys()) - set(filtered_dict.keys()) # Should be empty now
 
 
-    start_debugging()
+    print("✅ Loaded:", filtered_dict.keys())
+    print("⚠️   Skipped:", skipped_keys)
+
+    model_dict.update(filtered_dict)
+    model.load_state_dict(model_dict, strict=False)
+
+    # pan_ckpt = torch.load("models/curr_running_test.pth", map_location=DEVICE)
+
+    # If the layer names match exactly, just do this:
+    # model.pan_camera.load_state_dict({
+    #     "weight": pan_ckpt["model_state_dict"]["pan_camera.weight"],
+    #     "bias": pan_ckpt["model_state_dict"]["pan_camera.bias"]
+    # })
+
+    # with torch.no_grad():
+    #     model.jump_policy.weight.zero_()
+    #     model.jump_policy.bias.fill_(-4.59511985)  # ~25% Bernoulli prob
+
+    # with torch.no_grad():
+    #     # Nudge bias to prefer no jump
+    #     # model.jump_policy.bias.add_(-2.5)
+    #     print("⬇️  Applied anti-jump bias")
+
+    if "optimizer_state_dict" in checkpoint:
+        try:
+            ppo.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            print("✅ Loaded optimizer state!")
+            # ppo.policy_optimizer.load_state_dict(checkpoint["policy_optimizer_state_dict"])
+            # ppo.value_optimizer.load_state_dict(checkpoint["value_optimizer_state_dict"])
+
+            # VERIFY optimizer shapes match
+            # for old_state, new_param in zip(
+            #         checkpoint["policy_optimizer_state_dict"]["state"].values(),
+            #         model.parameters()):
+            #     for k, v in old_state.items():
+            #         if isinstance(v, torch.Tensor) and v.shape != new_param.shape:
+            #             raise RuntimeError("Optimizer state tensor shape mismatch")
 
 
-    for i in range(1000):
-        print("Loop ", i)
-        conn.sendall(struct.pack(">i", 1))
-        print_cuda_mem("Before Rollout")
-        train_data, ep_reward = rollout(model, ppo, ep_rewards, i, curr_best)
-        ep_rewards.append(ep_reward)
-        print_cuda_mem("After Rollout")
 
-        if ep_reward >= curr_best or i % 5 == 0:
-            if ep_reward >= curr_best:
-                curr_best = ep_reward
-                save_path = f"models/model_best_cnn{curr_best:.2f}.pth"
-            else:
-                save_path = f"models/iter_saves/model_itr_{i}.pth"
-            torch.save({
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": ppo.optimizer.state_dict(),
-                "rewards": ep_rewards,
-                "best_reward": curr_best,
-                "iter": i,
-            }, save_path)
+        except Exception as e:
+            print("⚠️ Optimizer state incompatible — resetting optimizer.")
+            # ppo.policy_optimizer = torch.optim.Adam(ppo.policy_optimizer.param_groups[0]["params"])
+            # ppo.value_optimizer = torch.optim.Adam(ppo.value_optimizer.param_groups[0]["params"])
+            ppo.optimizer = torch.optim.Adam(ppo.optimizer.param_groups[0]["params"])
 
-            print(f" ✅ Saved best model → {save_path} with reward {curr_best}")
+    # curr_best = checkpoint['best_reward']
+    curr_best = float('-inf')
+    ep_rewards.append(curr_best)
 
-        plot_rewards(ep_rewards, path=f'model_{i}', window=1)
+    print(f"✅ Loaded model! Best reward: {curr_best}")
 
-        permute_idxs = np.random.permutation(len(train_data['InventoryObs']))
+else:
+    print("⚠️ No checkpoint found, training from scratch")
 
-        # Are already tensors
 
-        obs = {
-            'Inventory' : torch.tensor(train_data['InventoryObs'][permute_idxs], dtype=torch.float32, device=DEVICE),
-            'Blocks'    : torch.tensor(train_data['BlocksObs'][permute_idxs], dtype=torch.int64, device=DEVICE),
-            'Entities'  : torch.tensor(train_data['EntitiesObs'][permute_idxs], dtype=torch.float32, device=DEVICE),
-            'AgentInfo' : torch.tensor(train_data['AgentInfoObs'][permute_idxs], dtype=torch.float32, device=DEVICE),
-            'PrevActions' : torch.tensor(train_data['PrevActionsObs'][permute_idxs], dtype=torch.float32, device=DEVICE),
-        }
+start_debugging()
 
-        act = {
-            'movement'  : torch.tensor(train_data['movement'][permute_idxs], dtype=torch.int64, device=DEVICE),
-            # 'jump'      : torch.tensor(train_data['jump'][permute_idxs], dtype=torch.float32, device=DEVICE),
-            'item_use'  : torch.tensor(train_data['item_use'][permute_idxs], dtype=torch.int64, device=DEVICE),
-            'hotbar'    : torch.tensor(train_data['hotbar'][permute_idxs], dtype=torch.int64, device=DEVICE),
-            'pan_cam'   : torch.tensor(train_data['pan_cam'][permute_idxs], dtype=torch.int64, device=DEVICE)
-        }
 
-        advantages = torch.tensor(train_data['advantage'][permute_idxs], dtype=torch.float32, device=DEVICE)
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-        summed_log_probs = torch.tensor(train_data['log_prob'][permute_idxs], dtype=torch.float32, device=DEVICE)
-        log_probs = {
-            "old_movement_lp" : torch.tensor(train_data['movement_log_prob'][permute_idxs], dtype=torch.float32, device=DEVICE),
-            "old_item_use_lp" : torch.tensor(train_data['item_use_log_prob'][permute_idxs], dtype=torch.float32, device=DEVICE),
-            "old_hotbar_lp"   : torch.tensor(train_data['hotbar_log_prob'][permute_idxs], dtype=torch.float32, device=DEVICE),
-            "old_pan_cam_lp"  : torch.tensor(train_data['pan_cam_log_prob'][permute_idxs], dtype=torch.float32, device=DEVICE),
-        }
-        # "movement_log_prob": [],
-        #         "item_use_log_prob": [],
-        #         "hotbar_log_prob": [],
-        #         "pan_cam_log_prob": [],
-        returns = torch.tensor(train_data['returns'][permute_idxs], dtype=torch.float32, device=DEVICE)
-        print_cuda_mem("Before Training")
+for i in range(iteration, 10000):
+    print("Loop ", i)
+    for s in env_sockets:
+        s.sendall(struct.pack(">i", 1))
+    print_cuda_mem("Before Rollout")
+    train_data, ep_reward = rollout(model, ppo, ep_rewards, i, curr_best)
+    ep_rewards.append(np.mean(ep_reward))
+    print_cuda_mem("After Rollout")
 
-        ppo.train_policy(obs, act, log_probs, summed_log_probs, advantages, returns)
-        # ppo.train_value(obs, returns)
-        print('********************************')
-        print('****** Completed Training ******')
-        print('********************************')
+    if ep_rewards[-1] >= curr_best or i % 5 == 0:
+        if ep_rewards[-1] >= curr_best:
+            curr_best = ep_rewards[-1]
+            save_path = f"models/model_best_multi{curr_best:.2f}.pth"
+        else:
+            save_path = f"models/iter_saves/model_itr_{i}.pth"
+        torch.save({
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": ppo.optimizer.state_dict(),
+            "rewards": ep_rewards,
+            "best_reward": curr_best,
+            "iter": i,
+        }, save_path)
+
+        print(f" ✅ Saved best model → {save_path} with reward {curr_best}")
+
+    plot_rewards(ep_rewards, path=f'model_{i}', window=1)
+
+    flat = lambda x: np.concatenate(x, axis=0)  # stack (E,T,...) vertically to (T*E,...)
+
+    num_samples = flat(train_data["InventoryObs"]).shape[0]
+    permute_idxs = np.random.permutation(num_samples)
+
+    obs = {
+        'Inventory': torch.tensor(flat(train_data['InventoryObs'])[permute_idxs], dtype=torch.float32, device=DEVICE),
+        'Blocks': torch.tensor(flat(train_data['BlocksObs'])[permute_idxs], dtype=torch.int64, device=DEVICE),
+        'Entities': torch.tensor(flat(train_data['EntitiesObs'])[permute_idxs], dtype=torch.float32, device=DEVICE),
+        'AgentInfo': torch.tensor(flat(train_data['AgentInfoObs'])[permute_idxs], dtype=torch.float32, device=DEVICE),
+        'PrevActions': torch.tensor(flat(train_data['PrevActionsObs'])[permute_idxs], dtype=torch.float32,
+                                    device=DEVICE),
+    }
+
+    act = {
+        'movement': torch.tensor(flat(train_data['movement'])[permute_idxs], dtype=torch.int64, device=DEVICE),
+        'item_use': torch.tensor(flat(train_data['item_use'])[permute_idxs], dtype=torch.int64, device=DEVICE),
+        'hotbar': torch.tensor(flat(train_data['hotbar'])[permute_idxs], dtype=torch.int64, device=DEVICE),
+        'pan_cam': torch.tensor(flat(train_data['pan_cam'])[permute_idxs], dtype=torch.int64, device=DEVICE),
+    }
+
+    advantages = torch.tensor(flat(train_data['advantage'])[permute_idxs], dtype=torch.float32, device=DEVICE)
+    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+    summed_log_probs = torch.tensor(flat(train_data['log_prob'])[permute_idxs], dtype=torch.float32, device=DEVICE)
+
+    log_probs = {
+        "old_movement_lp": torch.tensor(flat(train_data['movement_log_prob'])[permute_idxs], dtype=torch.float32, device=DEVICE),
+        "old_item_use_lp": torch.tensor(flat(train_data['item_use_log_prob'])[permute_idxs], dtype=torch.float32, device=DEVICE),
+        "old_hotbar_lp": torch.tensor(flat(train_data['hotbar_log_prob'])[permute_idxs], dtype=torch.float32, device=DEVICE),
+        "old_pan_cam_lp": torch.tensor(flat(train_data['pan_cam_log_prob'])[permute_idxs], dtype=torch.float32, device=DEVICE),
+    }
+
+    returns = torch.tensor(flat(train_data['returns'])[permute_idxs], dtype=torch.float32, device=DEVICE)
+
+    print_cuda_mem("Before Training")
+
+    ppo.train_policy(obs, act, log_probs, summed_log_probs, advantages, returns)
+    # ppo.train_value(obs, returns)
+    print('********************************')
+    print('****** Completed Training ******')
+    print('********************************')

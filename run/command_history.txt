@@ -1,50 +1,50 @@
-/start_training EmpireCreator
-/tick rate 40
-/effect give @p saturation 1 255
-/start_training EmpireCreator
-/effect give @p saturation 1 255
-/effect give @p saturation 10 255
-/tick rate 40
-/start_training EmpireCreator
-/player Empirecreator drop all
-/setworldspawn
-/start_training EmpireCreator
-/setworldspawn
-/start_training EmpireCreator
-/tick rate 40
-/start_training EmpireCreator
-/player Empirecreator drop all
-/start_training EmpireCreator
-/player Empirecreator drop all
-/start_training EmpireCreator
-/tick rate 40
-/start_training EmpireCreator
-/tick rate 40
-/start_training EmpireCreator
-/player Empirecreator drop all
-/player Empirecreator dropStack all
-/tick rate 30
+/stop_training
+/start_training Agent1 5001
+/stop_training
+/close_socket
+/start_training Agent1 5001
+/stop_training
+/start_training Agent1 5001
+/stop_training
+/start_training Agent1 5001
+/stop_training
+/start_training Agent1 5001
+/stop_training
+/start_training Agent1 5001
+/stop_training
+/start_training Agent1 5001
+/stop_training
+/start_training Agent1 5001
+/stop_training
+/start_training Agent1 5001
+/stop_training
+/start_training Agent1 5001
+/stop_training
+/start_training Agent1 5001
+/stop_training
+/start_training Agent1 5001
+/stop_training
+/start_training Agent1 5001
+/stop_training
 /tick rate 35
-/player Empirecreator dropStack all
-/start_training EmpireCreator
-/player Empirecreator dropStack all
-/start_training EmpireCreator
+/start_training UIRMNUG 5004
 /tick rate 35
-/start_training EmpireCreator
-/player Empirecreator dropStack all
-/setworldspawn
-/start_training EmpireCreator
-/tick rate 35
-/start_training EmpireCreator
-/tp Empirecreator ~ ~ ~
-/tick rate 35
-/start_training EmpireCreator
-/tp Empirecreator ~ ~ ~
-/start_training EmpireCreator
-/tp Empirecreator ~ ~ ~
-/start_training EmpireCreator
-/tick rate 35
-/tp Empirecreator ~ ~ ~
-/start_training EmpireCreator
-/tick rate 35
-/start_training EmpireCreator
+/start_training Notch 5006
+/start_training Alex 5009
+/start_training UIRMNUG 5000
+/start_training UIRMNUG 5003
+/start_training UIRMNUG 5004
+/start_training UIRMNUG 5006
+/start_training UIRMNUG 5007
+/stop_training
+/start_training UIRMNUG 5007
+/stop_training
+/start_training UIRMNUG 5007
+/start_training Steve 5001
+/start_training Steve 5002
+/start_training Steve 5004
+/start_training Steve 5007
+/stop_training
+/start_training Steve 5007
+/stop_training
+/start_training Steve 5007

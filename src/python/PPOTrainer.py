@@ -3,7 +3,7 @@ from torch import nn
 from torch import optim
 from torch.distributions import Categorical, Bernoulli
 
-batch_size = 256
+batch_size = 1024
 
 
 class PPOTrainer():

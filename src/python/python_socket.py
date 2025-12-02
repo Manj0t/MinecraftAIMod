@@ -69,7 +69,7 @@ model.to(DEVICE)
 ppo = PPOTrainer(model)
 
 # load_path = "models/iter_saves/continuing_25.pth"
-load_path = "models/model_1.0_epoch_40.pth"
+load_path = "imitate/model_0.849609375_epoch_240.pth"
 # Saved_State_1131
 # .35.pth
 iteration = 0

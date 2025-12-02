@@ -132,7 +132,7 @@ public class Minecraftaimod implements ModInitializer {
     int prev_num_logs = 0;
     ServerPlayerEntity expert = null;
 
-    boolean data_collection = true;
+    boolean data_collection = false;
     @Override
     public void onInitialize() {
 

@@ -14,6 +14,7 @@ DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 DEBUG_CNN = False
 SAVE_STATE = False
+DEBUG_KL = False
 
 def start_debugging():
     threading.Thread(target=debug_input_listener, daemon=True).start()
@@ -21,6 +22,7 @@ def start_debugging():
 def debug_input_listener():
     global DEBUG_CNN
     global SAVE_STATE
+    global DEBUG_KL
     print("-> CNN Debugger listening... Enter 'd' anytime to dump feature maps.")
     while True:
         user_input = sys.stdin.readline().strip()
@@ -28,12 +30,11 @@ def debug_input_listener():
             DEBUG_CNN = True
         elif user_input.lower() == "s":
             SAVE_STATE = True
+        elif user_input.lower() == "k":
+            DEBUG_KL = not DEBUG_KL
+            print(f'DEBUG_KL is now {DEBUG_KL}')
 
 def save_slice(tensor, title, filename, depth_axis=0, slice_index=None, cmap="viridis"):
-    """
-    Saves a 2D slice of a 3D tensor as PNG.
-    tensor = (D, H, W) or (C, D, H, W)
-    """
 
     t = tensor.detach().cpu()
 
@@ -70,10 +71,6 @@ def save_slice(tensor, title, filename, depth_axis=0, slice_index=None, cmap="vi
 
 
 def save_feature_maps(feature_tensor, name):
-    """
-    Save a grid of CNN activation maps as a single PNG.
-    feature_tensor: (1, C, D, H, W)
-    """
 
     feat = feature_tensor[0]  # remove batch
     C = feat.shape[0]
@@ -120,16 +117,13 @@ def debug_cnn(model, block_ids_tensor, ppo, ep_rewards, i, curr_best):
     print("\n=== CNN DEBUGGING ===")
     print("Saving images to:", SAVE_DIR)
 
-    # 1. RAW BLOCKS
     save_slice(block_ids_tensor, "Raw Blocks (Top)", "raw_top.png", depth_axis=1)
     save_slice(block_ids_tensor, "Raw Blocks (X slice)", "raw_x.png", depth_axis=0)
     save_slice(block_ids_tensor, "Raw Blocks (Z slice)", "raw_z.png", depth_axis=2)
 
-    # 2. EMBEDDING
     embeds = model.block_embedder(block_ids_tensor.to(DEVICE))
     save_feature_maps(embeds, "embedding_maps")
 
-    # 3. CNN LAYERS
     with torch.no_grad():
         _ = model.block_cnn(embeds)
 

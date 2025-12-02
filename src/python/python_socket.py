@@ -2,7 +2,7 @@ import socket
 import struct
 import time
 from PPOTrainer import PPOTrainer
-from utils import set_conn, rollout, print_cuda_mem, plot_rewards
+from utils import set_conn, rollout, print_cuda_mem, plot_rewards, test_rollout
 import state_pb2
 from ActorCritic import *
 import torch
@@ -16,6 +16,13 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 HOST = '127.0.0.1'
 
 num_envs = int(sys.argv[1])
+test = False
+try:
+    sys.argv[2]
+    test = True
+except IndexError:
+    pass
+
 startPort = 5000
 
 PORTS = [startPort + i for i in range(num_envs)]
@@ -42,7 +49,6 @@ for port in PORTS:
             raise ConnectionError("Socket closed before receiving full header")
         buffer += chunk
 
-    # ✅ Now unpack correctly
     agent_info_dim, num_items, num_blocks, num_entities = struct.unpack(">4i", buffer)
     headers.append((agent_info_dim, num_items, num_blocks, num_entities))
 
@@ -53,12 +59,9 @@ num_items     = headers[0][1]
 num_blocks    = headers[0][2]
 num_entities  = headers[0][3]
 
-set_conn(env_sockets, num_envs)
+print(f'agent_info_dim: {agent_info_dim}, num_items: {num_items}, num_blocks: {num_blocks}, num_entities {num_entities}')
 
-# print('agent_info_dim: ', agent_info_dim)
-# print('num_items: ', num_items)
-# print('num_blocks: ', num_blocks)
-# print('num_entities: ', num_entities)
+set_conn(env_sockets, num_envs)
 
 model = ActorCriticNetwork(agent_info_dim, num_items, num_blocks, num_entities)
 model.to(DEVICE)
@@ -66,21 +69,23 @@ model.to(DEVICE)
 ppo = PPOTrainer(model)
 
 # load_path = "models/iter_saves/continuing_25.pth"
-load_path = "models/iter_saves/starting_multi_env.pth"
+load_path = "models/model_1.0_epoch_40.pth"
 # Saved_State_1131
 # .35.pth
 iteration = 0
+curr_best = float('-inf')
 if os.path.exists(load_path):
-    print(f"🔁 Loading checkpoint: {load_path}")
-    checkpoint = torch.load(load_path, map_location=DEVICE)
+    print(f"<(-_-)> Loading checkpoint: {load_path}")
+    checkpoint = torch.load(load_path, map_location=DEVICE, weights_only=False)
 
     model_dict = model.state_dict()
     pretrained_dict = checkpoint["model_state_dict"]
+    # curr_best = checkpoint["best_reward"]
+    #
+    # ep_rewards = checkpoint["rewards"]
+    # iteration = checkpoint["iter"]
+    # print(f'Best reward {checkpoint["best_reward"]}')
 
-    ep_rewards = checkpoint["rewards"]
-    iteration = checkpoint["iter"]
-
-    # Filter out weights that don't match shape (like shared_layers.0.weight)
     filtered_dict = {}
 
     for key, params in pretrained_dict.items():
@@ -100,64 +105,42 @@ if os.path.exists(load_path):
     skipped_keys = set(pretrained_dict.keys()) - set(filtered_dict.keys()) # Should be empty now
 
 
-    print("✅ Loaded:", filtered_dict.keys())
-    print("⚠️   Skipped:", skipped_keys)
+    print("-> Loaded:", filtered_dict.keys())
+    print("/\ Skipped:", skipped_keys)
 
     model_dict.update(filtered_dict)
     model.load_state_dict(model_dict, strict=False)
 
-    # pan_ckpt = torch.load("models/curr_running_test.pth", map_location=DEVICE)
-
-    # If the layer names match exactly, just do this:
-    # model.pan_camera.load_state_dict({
-    #     "weight": pan_ckpt["model_state_dict"]["pan_camera.weight"],
-    #     "bias": pan_ckpt["model_state_dict"]["pan_camera.bias"]
-    # })
-
-    # with torch.no_grad():
-    #     model.jump_policy.weight.zero_()
-    #     model.jump_policy.bias.fill_(-4.59511985)  # ~25% Bernoulli prob
-
-    # with torch.no_grad():
-    #     # Nudge bias to prefer no jump
-    #     # model.jump_policy.bias.add_(-2.5)
-    #     print("⬇️  Applied anti-jump bias")
-
     if "optimizer_state_dict" in checkpoint:
         try:
             ppo.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-            print("✅ Loaded optimizer state!")
-            # ppo.policy_optimizer.load_state_dict(checkpoint["policy_optimizer_state_dict"])
-            # ppo.value_optimizer.load_state_dict(checkpoint["value_optimizer_state_dict"])
-
-            # VERIFY optimizer shapes match
-            # for old_state, new_param in zip(
-            #         checkpoint["policy_optimizer_state_dict"]["state"].values(),
-            #         model.parameters()):
-            #     for k, v in old_state.items():
-            #         if isinstance(v, torch.Tensor) and v.shape != new_param.shape:
-            #             raise RuntimeError("Optimizer state tensor shape mismatch")
-
+            print("> Loaded optimizer state!")
 
 
         except Exception as e:
-            print("⚠️ Optimizer state incompatible — resetting optimizer.")
+            print("/| Optimizer state incompatible — resetting optimizer.")
             # ppo.policy_optimizer = torch.optim.Adam(ppo.policy_optimizer.param_groups[0]["params"])
             # ppo.value_optimizer = torch.optim.Adam(ppo.value_optimizer.param_groups[0]["params"])
             ppo.optimizer = torch.optim.Adam(ppo.optimizer.param_groups[0]["params"])
 
     # curr_best = checkpoint['best_reward']
-    curr_best = float('-inf')
     ep_rewards.append(curr_best)
 
-    print(f"✅ Loaded model! Best reward: {curr_best}")
+    print(f"> Loaded model! Best reward: {curr_best}")
 
 else:
-    print("⚠️ No checkpoint found, training from scratch")
+    print("/\ No checkpoint found, training from scratch")
 
 
 start_debugging()
 
+
+if test:
+    print("Testing model with argmax")
+    while True:
+        for s in env_sockets:
+            s.sendall(struct.pack(">i", 1))
+        test_rollout(model)
 
 for i in range(iteration, 10000):
     print("Loop ", i)
@@ -171,7 +154,7 @@ for i in range(iteration, 10000):
     if ep_rewards[-1] >= curr_best or i % 5 == 0:
         if ep_rewards[-1] >= curr_best:
             curr_best = ep_rewards[-1]
-            save_path = f"models/model_best_multi{curr_best:.2f}.pth"
+            save_path = f"models/model_best_now_attacks{curr_best:.2f}_iter{i}.pth"
         else:
             save_path = f"models/iter_saves/model_itr_{i}.pth"
         torch.save({
@@ -186,9 +169,9 @@ for i in range(iteration, 10000):
 
     plot_rewards(ep_rewards, path=f'model_{i}', window=1)
 
-    flat = lambda x: np.concatenate(x, axis=0)  # stack (E,T,...) vertically to (T*E,...)
+    flat = lambda x: np.concatenate(x, axis=0)
 
-    num_samples = flat(train_data["InventoryObs"]).shape[0]
+    num_samples = flat(train_data["BlocksObs"]).shape[0]
     permute_idxs = np.random.permutation(num_samples)
 
     obs = {

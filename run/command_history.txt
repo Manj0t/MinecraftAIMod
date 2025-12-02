@@ -1,50 +1,50 @@
-/stop_training
-/start_training Agent1 5001
-/stop_training
-/close_socket
-/start_training Agent1 5001
-/stop_training
-/start_training Agent1 5001
-/stop_training
-/start_training Agent1 5001
-/stop_training
-/start_training Agent1 5001
-/stop_training
-/start_training Agent1 5001
-/stop_training
-/start_training Agent1 5001
-/stop_training
-/start_training Agent1 5001
-/stop_training
-/start_training Agent1 5001
-/stop_training
-/start_training Agent1 5001
-/stop_training
-/start_training Agent1 5001
-/stop_training
-/start_training Agent1 5001
-/stop_training
-/start_training Agent1 5001
-/stop_training
-/tick rate 35
-/start_training UIRMNUG 5004
-/tick rate 35
-/start_training Notch 5006
-/start_training Alex 5009
-/start_training UIRMNUG 5000
-/start_training UIRMNUG 5003
-/start_training UIRMNUG 5004
-/start_training UIRMNUG 5006
-/start_training UIRMNUG 5007
-/stop_training
-/start_training UIRMNUG 5007
-/stop_training
-/start_training UIRMNUG 5007
-/start_training Steve 5001
-/start_training Steve 5002
+/start_training Steve 5003
 /start_training Steve 5004
-/start_training Steve 5007
+/start_training Steve 5005
+/gamemode creative
+/start_training Steve 5000
+/time set day
+/start_training Steve 5000
 /stop_training
-/start_training Steve 5007
+/start_training Steve 5000
+/kill Steve
+/start_training Steve 5000
+/time set day
+/gamemode survival
+/start_training Steve 5000
+/kill
+/start_training Steve 5000
+/gamemode creative
+/gamemode survival
+/give Player91 minecraft:iron_axe
+/give Player91 minecraft:iron_pickaxe
+/give Player91 minecraft:iron_sword
+/give Player91 minecraft:cooked_beef 5
+/start_training Steve 5000
+/kill
+/start_training Steve 5000
+/gamemode creative
+/tp Steve
+/start_training Steve 5000
+/gamemode survival
+/start_training Steve 5000
+/gamemode creative
+/spawnpoint
+/start_training Steve 5000
+/time set day
+/gamemode survival
+/start_training Steve 5000
+/give Player945 minecraft:iron_axe
+/gamemode creative
+/gamemode survival
+/start_training Steve 5000
+/give Player945 minecraft:iron_axe
+/give Player945 minecraft:iron_pickaxe
+/kill
+/start_training Steve 5000
+/gamemode survival
+/start_training Steve 5000
 /stop_training
-/start_training Steve 5007
+/gamemode creative
+/gamemode survival
+/start_training Steve 5000

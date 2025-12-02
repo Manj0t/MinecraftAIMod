@@ -90,8 +90,9 @@ def get_state():
         obs['AgentInfo'].append(agentInfo_t)
 
     for key in ['Inventory', 'Entities', 'AgentInfo']:
-        obs[key] = torch.stack(obs[key], dim=0).to(DEVICE)  # (num_envs, ...)
-    obs['Blocks'] = torch.stack(obs['Blocks'], dim=0).to(DEVICE)  # (num_envs, ...)
+        obs[key] = torch.stack(obs[key], dim=0).to(DEVICE)
+    # obs['AgentInfo'] = torch.stack(obs['AgentInfo'], dim=0).to(DEVICE)
+    obs['Blocks'] = torch.stack(obs['Blocks'], dim=0).to(DEVICE)
     obs['PrevActions'] = prevActions
 
     return obs
@@ -103,7 +104,7 @@ def take_step(actions, max_steps, itr):
 
     rewards, dones = [], []
 
-    # 1) send actions
+    # send actions
     for env_idx, conn in enumerate(conns):
         out_action = state_pb2.Action()
         out_action.actions.extend(actions[env_idx])
@@ -111,7 +112,7 @@ def take_step(actions, max_steps, itr):
         conn.sendall(struct.pack(">i", len(out)))
         conn.sendall(out)
 
-    # 2) recv reward/done
+    # recv reward/done
     for env_idx, conn in enumerate(conns):
         reward = struct.unpack(">f", conn.recv(4))[0]
         done   = struct.unpack(">i", conn.recv(4))[0]
@@ -121,12 +122,45 @@ def take_step(actions, max_steps, itr):
         if done:
             prevActions[env_idx].zero_()  # reset ONLY that env row
 
-    # 3) send continue/stop
+    # send continue/stop
     cont_flag = 0 if itr == max_steps - 1 else 1
     for conn in conns:
         conn.sendall(struct.pack(">i", cont_flag))
 
-    # 4) get next obs once
+    # get next obs once
+    next_obs = None if cont_flag == 0 else get_state()
+    return next_obs, rewards, dones
+
+def take_step_test(actions, max_steps, itr):
+    global prevActions
+    prevActions = torch.tensor(actions, dtype=torch.float32, device=DEVICE)  # (num_envs,4)
+
+    rewards, dones = [], []
+
+    # send actions
+    for env_idx, conn in enumerate(conns):
+        out_action = state_pb2.Action()
+        out_action.actions.extend(actions)
+        out = out_action.SerializeToString()
+        conn.sendall(struct.pack(">i", len(out)))
+        conn.sendall(out)
+
+    # recv reward/done
+    for env_idx, conn in enumerate(conns):
+        reward = struct.unpack(">f", conn.recv(4))[0]
+        done   = struct.unpack(">i", conn.recv(4))[0]
+        rewards.append(float(reward))
+        dones.append(int(done))
+
+        if done:
+            prevActions[env_idx].zero_()  # reset ONLY that env row
+
+    # send continue/stop
+    cont_flag = 0 if itr == max_steps - 1 else 1
+    for conn in conns:
+        conn.sendall(struct.pack(">i", cont_flag))
+
+    # get next obs once
     next_obs = None if cont_flag == 0 else get_state()
     return next_obs, rewards, dones
 
@@ -141,7 +175,7 @@ def compute_gaes(rewards, values, dones, gamma=0.99, lam=0.95):
         values  = values[None, :]
         dones   = dones[None, :]
 
-    # You stored as (E,T). Convert to (T,E)
+    # stored as (E,T) convert to (T,E)
     if rewards.shape[0] == num_envs:
         rewards = rewards.T
         values  = values.T
@@ -154,7 +188,7 @@ def compute_gaes(rewards, values, dones, gamma=0.99, lam=0.95):
     for e in range(E):
         gae = 0.0
         for t in reversed(range(T)):
-            next_value = values[t+1, e] if t < T-1 else values[t, e]
+            next_value = values[t+1, e] if t < T-1 else 0.0
             delta = rewards[t, e] + gamma * next_value * (1 - dones[t, e]) - values[t, e]
             gae = delta + gamma * lam * (1 - dones[t, e]) * gae
             advantages[t, e] = gae
@@ -162,7 +196,41 @@ def compute_gaes(rewards, values, dones, gamma=0.99, lam=0.95):
 
     return advantages, returns
 
+def test_rollout(model, max_steps=2048):
+    global prevActions
 
+    prevActions = torch.zeros(num_envs, 4, dtype=torch.float32).to(DEVICE)
+    obs = get_state()  # Should return a tensor for obs
+
+    for i in range(max_steps):
+        if i % 500 == 0:
+            print(i)
+        with torch.no_grad():
+            logits_dict, value = model(obs)
+
+
+        # logits_dict['jump'] = logits_dict['jump'].squeeze(-1)
+
+        movement_dist = Categorical(logits=logits_dict['movement'])
+        item_use_dist = Categorical(logits=logits_dict['item_use'])
+        hotbar_dist = Categorical(logits=logits_dict['hotbar'])
+        pan_cam_dist = Categorical(logits=logits_dict['pan_camera'])
+
+        # jump_logits = logits_dict['jump']
+        # print("Jump logits mean:", jump_logits.mean().item())
+        # print("Jump prob mean:", torch.sigmoid(jump_logits).mean().item())
+
+        movement_act = torch.argmax(logits_dict['movement'])
+        item_use_act = item_use_dist.sample()
+        hotbar_act = hotbar_dist.sample()
+        pan_cam_act = torch.argmax(logits_dict['pan_camera'])
+
+
+        action = [movement_act, 0, 0, pan_cam_act]
+
+        next_obs, reward, done = take_step_test(action, max_steps, i)
+
+        obs = next_obs
 
 
 def rollout(model, ppo, ep_rewards, ppo_iter, curr_best, max_steps=2048):
@@ -202,10 +270,8 @@ def rollout(model, ppo, ep_rewards, ppo_iter, curr_best, max_steps=2048):
             logits_dict, value = model(obs)
 
 
-        # logits_dict['jump'] = logits_dict['jump'].squeeze(-1)
 
         movement_dist = Categorical(logits=logits_dict['movement'])
-        # jump_dist = Bernoulli(logits=logits_dict['jump'])
         item_use_dist = Categorical(logits=logits_dict['item_use'])
         hotbar_dist = Categorical(logits=logits_dict['hotbar'])
         pan_cam_dist = Categorical(logits=logits_dict['pan_camera'])
@@ -228,7 +294,6 @@ def rollout(model, ppo, ep_rewards, ppo_iter, curr_best, max_steps=2048):
 
         act_log_prob = (
                 movement_log_prob +
-                # jump_log_prob +
                 item_use_log_prob +
                 hotbar_log_prob +
                 pan_cam_log_prob
@@ -237,19 +302,18 @@ def rollout(model, ppo, ep_rewards, ppo_iter, curr_best, max_steps=2048):
         act_log_prob = act_log_prob.detach().cpu()
         value = value.detach().cpu()
 
-        # Force shape (num_envs,)
         if value.ndim == 0:
             value = value.view(1)
         else:
             value = value.view(num_envs)
-
+        #
         # logits_np = {
         #     "movement": logits_dict["movement"].detach().cpu().numpy(),
         #     "jump": logits_dict["jump"].detach().cpu().numpy(),
         #     "item_use": logits_dict["item_use"].detach().cpu().numpy(),
         #     "hotbar": logits_dict["hotbar"].detach().cpu().numpy(),
         # }
-        #
+
         # rollout_buffer["obs"].append({
         #     'Inventory' : obs['Inventory'].clone(),
         #     'Blocks'    : obs['Blocks'].clone(),
@@ -265,7 +329,6 @@ def rollout(model, ppo, ep_rewards, ppo_iter, curr_best, max_steps=2048):
             rollout_buffer['PrevActionsObs'][j].append(obs['PrevActions'][j].detach().cpu())
 
             rollout_buffer["movement"][j].append(movement_act[j].detach().cpu())
-            # rollout_buffer["jump"].append(jump_act.detach().cpu())
             rollout_buffer["item_use"][j].append(item_use_act[j].detach().cpu())
             rollout_buffer["hotbar"][j].append(hotbar_act[j].detach().cpu())
             rollout_buffer["pan_cam"][j].append(pan_cam_act[j].detach().cpu())
@@ -303,9 +366,12 @@ def rollout(model, ppo, ep_rewards, ppo_iter, curr_best, max_steps=2048):
             # obs = get_state()
 
     # logits is dict, won't work
-    for key in ["InventoryObs", "EntitiesObs", "AgentInfoObs",  "PrevActionsObs", "log_prob", "movement_log_prob", "item_use_log_prob", "hotbar_log_prob", "pan_cam_log_prob", "value", "reward", "done"]:
+    #
+    #
+    for key in ["AgentInfoObs", "PrevActionsObs", "InventoryObs", "EntitiesObs", "log_prob", "item_use_log_prob", "hotbar_log_prob", "movement_log_prob", "pan_cam_log_prob", "value", "reward", "done"]:
         rollout_buffer[key] = np.array(rollout_buffer[key], dtype=np.float32)
-    for key in ["movement", "item_use", "hotbar", "pan_cam", "BlocksObs"]:
+        #
+    for key in ["movement", "pan_cam", "BlocksObs", "item_use", "hotbar",]:
         rollout_buffer[key] = np.array(rollout_buffer[key], dtype=np.int64)
 
     advantages, returns = compute_gaes(rollout_buffer['reward'], rollout_buffer['value'], rollout_buffer['done'])
@@ -327,7 +393,6 @@ def print_cuda_mem(tag=""):
 def plot_rewards(ep_rewards, window=20, path='graph'):
     plt.figure(figsize=(10, 5))
 
-    # Moving average for smoothing
     rewards_moving_avg = np.convolve(ep_rewards, np.ones(window) / window, mode="valid")
 
     plt.plot(ep_rewards, label="Episode Reward", alpha=0.4)
@@ -342,3 +407,6 @@ def plot_rewards(ep_rewards, window=20, path='graph'):
     plt.savefig(f'graphs/{path}.png',dpi=300, bbox_inches='tight')
 
     plt.close()
+
+
+

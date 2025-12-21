@@ -1,50 +1,50 @@
-/start_training Steve 5000
-/time set day
-/start_training Steve 5000
-/stop_training
-/start_training Steve 5000
-/kill Steve
-/start_training Steve 5000
+/gamemode survival
+/gamemode creative
+/start_training me 5000
 /time set day
 /gamemode survival
-/start_training Steve 5000
-/kill
-/start_training Steve 5000
+/gamemode creative
+/drop 0 1
+/start_training me 5000
+/gamemode survival
+/time set day
+/gamemode creative
+/start_training me 5000
+/gamemode survival
+/gamemode creative
+/start_training me 5000
+/gamemode survival
+/start_training me 5000
+/gamemode survival
+/time set day
+/start_training me 5000
 /gamemode creative
 /gamemode survival
-/give Player91 minecraft:iron_axe
-/give Player91 minecraft:iron_pickaxe
-/give Player91 minecraft:iron_sword
-/give Player91 minecraft:cooked_beef 5
-/start_training Steve 5000
-/kill
-/start_training Steve 5000
+/start_training me 5000
 /gamemode creative
+/gamemode survival
+/gamemode creative
+/time set day
+/gamemode survival
+/start_training me 5000
+/gamemode creative
+/start_training me 5000
+/gamemode survival
+/start_training me 5000
+/gamemode creative
+/start_training Steve 5000
 /tp Steve
-/start_training Steve 5000
-/gamemode survival
-/start_training Steve 5000
-/gamemode creative
-/spawnpoint
-/start_training Steve 5000
 /time set day
-/gamemode survival
+/
 /start_training Steve 5000
-/give Player945 minecraft:iron_axe
 /gamemode creative
-/gamemode survival
-/start_training Steve 5000
-/give Player945 minecraft:iron_axe
-/give Player945 minecraft:iron_pickaxe
+/tp 0 200 0
 /kill
 /start_training Steve 5000
+/start_training me 5000
 /gamemode survival
-/start_training Steve 5000
-/stop_training
+/start_training me 5000
 /gamemode creative
+/time set day
 /gamemode survival
-/start_training Steve 5000
-/player Steve dropStack all
-/start_training Steve 5000
-/kill Steve
-/start_training Steve 5000
+/start_training me 5000

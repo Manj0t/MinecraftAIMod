@@ -68,4 +68,40 @@ public interface StateOrBuilder extends
    * <code>.minecraftai.Matrix3D nearbyBlocks = 4;</code>
    */
   me.sand.minecraftaimod.protobuf.Matrix3DOrBuilder getNearbyBlocksOrBuilder();
+
+  /**
+   * <code>.minecraftai.Matrix4D nearbyItemDrops = 5;</code>
+   * @return Whether the nearbyItemDrops field is set.
+   */
+  boolean hasNearbyItemDrops();
+  /**
+   * <code>.minecraftai.Matrix4D nearbyItemDrops = 5;</code>
+   * @return The nearbyItemDrops.
+   */
+  me.sand.minecraftaimod.protobuf.Matrix4D getNearbyItemDrops();
+  /**
+   * <code>.minecraftai.Matrix4D nearbyItemDrops = 5;</code>
+   */
+  me.sand.minecraftaimod.protobuf.Matrix4DOrBuilder getNearbyItemDropsOrBuilder();
+
+  /**
+   * <code>.minecraftai.Matrix container = 6;</code>
+   * @return Whether the container field is set.
+   */
+  boolean hasContainer();
+  /**
+   * <code>.minecraftai.Matrix container = 6;</code>
+   * @return The container.
+   */
+  me.sand.minecraftaimod.protobuf.Matrix getContainer();
+  /**
+   * <code>.minecraftai.Matrix container = 6;</code>
+   */
+  me.sand.minecraftaimod.protobuf.MatrixOrBuilder getContainerOrBuilder();
+
+  /**
+   * <code>double containerType = 7;</code>
+   * @return The containerType.
+   */
+  double getContainerType();
 }

@@ -9,6 +9,10 @@ message Matrix3D {
   repeated Matrix matrix = 1;
 }
 
+message Matrix4D {
+  repeated Matrix3D matrix3D = 1;
+}
+
 message Matrix {
   repeated Row rows = 1;
 }
@@ -22,6 +26,9 @@ message State {
   Matrix inventory = 2;
   Matrix nearbyEntities = 3;
   Matrix3D nearbyBlocks = 4;
+  Matrix4D nearbyItemDrops = 5;
+  Matrix container = 6;
+  double containerType = 7;
 }
 
 message Action {

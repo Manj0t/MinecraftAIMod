@@ -151,6 +151,69 @@ private static final long serialVersionUID = 0L;
     return nearbyBlocks_ == null ? me.sand.minecraftaimod.protobuf.Matrix3D.getDefaultInstance() : nearbyBlocks_;
   }
 
+  public static final int NEARBYITEMDROPS_FIELD_NUMBER = 5;
+  private me.sand.minecraftaimod.protobuf.Matrix4D nearbyItemDrops_;
+  /**
+   * <code>.minecraftai.Matrix4D nearbyItemDrops = 5;</code>
+   * @return Whether the nearbyItemDrops field is set.
+   */
+  @java.lang.Override
+  public boolean hasNearbyItemDrops() {
+    return nearbyItemDrops_ != null;
+  }
+  /**
+   * <code>.minecraftai.Matrix4D nearbyItemDrops = 5;</code>
+   * @return The nearbyItemDrops.
+   */
+  @java.lang.Override
+  public me.sand.minecraftaimod.protobuf.Matrix4D getNearbyItemDrops() {
+    return nearbyItemDrops_ == null ? me.sand.minecraftaimod.protobuf.Matrix4D.getDefaultInstance() : nearbyItemDrops_;
+  }
+  /**
+   * <code>.minecraftai.Matrix4D nearbyItemDrops = 5;</code>
+   */
+  @java.lang.Override
+  public me.sand.minecraftaimod.protobuf.Matrix4DOrBuilder getNearbyItemDropsOrBuilder() {
+    return nearbyItemDrops_ == null ? me.sand.minecraftaimod.protobuf.Matrix4D.getDefaultInstance() : nearbyItemDrops_;
+  }
+
+  public static final int CONTAINER_FIELD_NUMBER = 6;
+  private me.sand.minecraftaimod.protobuf.Matrix container_;
+  /**
+   * <code>.minecraftai.Matrix container = 6;</code>
+   * @return Whether the container field is set.
+   */
+  @java.lang.Override
+  public boolean hasContainer() {
+    return container_ != null;
+  }
+  /**
+   * <code>.minecraftai.Matrix container = 6;</code>
+   * @return The container.
+   */
+  @java.lang.Override
+  public me.sand.minecraftaimod.protobuf.Matrix getContainer() {
+    return container_ == null ? me.sand.minecraftaimod.protobuf.Matrix.getDefaultInstance() : container_;
+  }
+  /**
+   * <code>.minecraftai.Matrix container = 6;</code>
+   */
+  @java.lang.Override
+  public me.sand.minecraftaimod.protobuf.MatrixOrBuilder getContainerOrBuilder() {
+    return container_ == null ? me.sand.minecraftaimod.protobuf.Matrix.getDefaultInstance() : container_;
+  }
+
+  public static final int CONTAINERTYPE_FIELD_NUMBER = 7;
+  private double containerType_ = 0D;
+  /**
+   * <code>double containerType = 7;</code>
+   * @return The containerType.
+   */
+  @java.lang.Override
+  public double getContainerType() {
+    return containerType_;
+  }
+
   private byte memoizedIsInitialized = -1;
   @java.lang.Override
   public final boolean isInitialized() {
@@ -181,6 +244,15 @@ private static final long serialVersionUID = 0L;
     }
     if (nearbyBlocks_ != null) {
       output.writeMessage(4, getNearbyBlocks());
+    }
+    if (nearbyItemDrops_ != null) {
+      output.writeMessage(5, getNearbyItemDrops());
+    }
+    if (container_ != null) {
+      output.writeMessage(6, getContainer());
+    }
+    if (java.lang.Double.doubleToRawLongBits(containerType_) != 0) {
+      output.writeDouble(7, containerType_);
     }
     getUnknownFields().writeTo(output);
   }
@@ -214,6 +286,18 @@ private static final long serialVersionUID = 0L;
       size += com.google.protobuf.CodedOutputStream
         .computeMessageSize(4, getNearbyBlocks());
     }
+    if (nearbyItemDrops_ != null) {
+      size += com.google.protobuf.CodedOutputStream
+        .computeMessageSize(5, getNearbyItemDrops());
+    }
+    if (container_ != null) {
+      size += com.google.protobuf.CodedOutputStream
+        .computeMessageSize(6, getContainer());
+    }
+    if (java.lang.Double.doubleToRawLongBits(containerType_) != 0) {
+      size += com.google.protobuf.CodedOutputStream
+        .computeDoubleSize(7, containerType_);
+    }
     size += getUnknownFields().getSerializedSize();
     memoizedSize = size;
     return size;
@@ -246,6 +330,19 @@ private static final long serialVersionUID = 0L;
       if (!getNearbyBlocks()
           .equals(other.getNearbyBlocks())) return false;
     }
+    if (hasNearbyItemDrops() != other.hasNearbyItemDrops()) return false;
+    if (hasNearbyItemDrops()) {
+      if (!getNearbyItemDrops()
+          .equals(other.getNearbyItemDrops())) return false;
+    }
+    if (hasContainer() != other.hasContainer()) return false;
+    if (hasContainer()) {
+      if (!getContainer()
+          .equals(other.getContainer())) return false;
+    }
+    if (java.lang.Double.doubleToLongBits(getContainerType())
+        != java.lang.Double.doubleToLongBits(
+            other.getContainerType())) return false;
     if (!getUnknownFields().equals(other.getUnknownFields())) return false;
     return true;
   }
@@ -273,6 +370,17 @@ private static final long serialVersionUID = 0L;
       hash = (37 * hash) + NEARBYBLOCKS_FIELD_NUMBER;
       hash = (53 * hash) + getNearbyBlocks().hashCode();
     }
+    if (hasNearbyItemDrops()) {
+      hash = (37 * hash) + NEARBYITEMDROPS_FIELD_NUMBER;
+      hash = (53 * hash) + getNearbyItemDrops().hashCode();
+    }
+    if (hasContainer()) {
+      hash = (37 * hash) + CONTAINER_FIELD_NUMBER;
+      hash = (53 * hash) + getContainer().hashCode();
+    }
+    hash = (37 * hash) + CONTAINERTYPE_FIELD_NUMBER;
+    hash = (53 * hash) + com.google.protobuf.Internal.hashLong(
+        java.lang.Double.doubleToLongBits(getContainerType()));
     hash = (29 * hash) + getUnknownFields().hashCode();
     memoizedHashCode = hash;
     return hash;
@@ -418,6 +526,17 @@ private static final long serialVersionUID = 0L;
         nearbyBlocksBuilder_.dispose();
         nearbyBlocksBuilder_ = null;
       }
+      nearbyItemDrops_ = null;
+      if (nearbyItemDropsBuilder_ != null) {
+        nearbyItemDropsBuilder_.dispose();
+        nearbyItemDropsBuilder_ = null;
+      }
+      container_ = null;
+      if (containerBuilder_ != null) {
+        containerBuilder_.dispose();
+        containerBuilder_ = null;
+      }
+      containerType_ = 0D;
       return this;
     }
 
@@ -474,6 +593,19 @@ private static final long serialVersionUID = 0L;
         result.nearbyBlocks_ = nearbyBlocksBuilder_ == null
             ? nearbyBlocks_
             : nearbyBlocksBuilder_.build();
+      }
+      if (((from_bitField0_ & 0x00000010) != 0)) {
+        result.nearbyItemDrops_ = nearbyItemDropsBuilder_ == null
+            ? nearbyItemDrops_
+            : nearbyItemDropsBuilder_.build();
+      }
+      if (((from_bitField0_ & 0x00000020) != 0)) {
+        result.container_ = containerBuilder_ == null
+            ? container_
+            : containerBuilder_.build();
+      }
+      if (((from_bitField0_ & 0x00000040) != 0)) {
+        result.containerType_ = containerType_;
       }
     }
 
@@ -540,6 +672,15 @@ private static final long serialVersionUID = 0L;
       if (other.hasNearbyBlocks()) {
         mergeNearbyBlocks(other.getNearbyBlocks());
       }
+      if (other.hasNearbyItemDrops()) {
+        mergeNearbyItemDrops(other.getNearbyItemDrops());
+      }
+      if (other.hasContainer()) {
+        mergeContainer(other.getContainer());
+      }
+      if (other.getContainerType() != 0D) {
+        setContainerType(other.getContainerType());
+      }
       this.mergeUnknownFields(other.getUnknownFields());
       onChanged();
       return this;
@@ -603,6 +744,25 @@ private static final long serialVersionUID = 0L;
               bitField0_ |= 0x00000008;
               break;
             } // case 34
+            case 42: {
+              input.readMessage(
+                  getNearbyItemDropsFieldBuilder().getBuilder(),
+                  extensionRegistry);
+              bitField0_ |= 0x00000010;
+              break;
+            } // case 42
+            case 50: {
+              input.readMessage(
+                  getContainerFieldBuilder().getBuilder(),
+                  extensionRegistry);
+              bitField0_ |= 0x00000020;
+              break;
+            } // case 50
+            case 57: {
+              containerType_ = input.readDouble();
+              bitField0_ |= 0x00000040;
+              break;
+            } // case 57
             default: {
               if (!super.parseUnknownField(input, extensionRegistry, tag)) {
                 done = true; // was an endgroup tag
@@ -1056,6 +1216,276 @@ private static final long serialVersionUID = 0L;
         nearbyBlocks_ = null;
       }
       return nearbyBlocksBuilder_;
+    }
+
+    private me.sand.minecraftaimod.protobuf.Matrix4D nearbyItemDrops_;
+    private com.google.protobuf.SingleFieldBuilderV3<
+        me.sand.minecraftaimod.protobuf.Matrix4D, me.sand.minecraftaimod.protobuf.Matrix4D.Builder, me.sand.minecraftaimod.protobuf.Matrix4DOrBuilder> nearbyItemDropsBuilder_;
+    /**
+     * <code>.minecraftai.Matrix4D nearbyItemDrops = 5;</code>
+     * @return Whether the nearbyItemDrops field is set.
+     */
+    public boolean hasNearbyItemDrops() {
+      return ((bitField0_ & 0x00000010) != 0);
+    }
+    /**
+     * <code>.minecraftai.Matrix4D nearbyItemDrops = 5;</code>
+     * @return The nearbyItemDrops.
+     */
+    public me.sand.minecraftaimod.protobuf.Matrix4D getNearbyItemDrops() {
+      if (nearbyItemDropsBuilder_ == null) {
+        return nearbyItemDrops_ == null ? me.sand.minecraftaimod.protobuf.Matrix4D.getDefaultInstance() : nearbyItemDrops_;
+      } else {
+        return nearbyItemDropsBuilder_.getMessage();
+      }
+    }
+    /**
+     * <code>.minecraftai.Matrix4D nearbyItemDrops = 5;</code>
+     */
+    public Builder setNearbyItemDrops(me.sand.minecraftaimod.protobuf.Matrix4D value) {
+      if (nearbyItemDropsBuilder_ == null) {
+        if (value == null) {
+          throw new NullPointerException();
+        }
+        nearbyItemDrops_ = value;
+      } else {
+        nearbyItemDropsBuilder_.setMessage(value);
+      }
+      bitField0_ |= 0x00000010;
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>.minecraftai.Matrix4D nearbyItemDrops = 5;</code>
+     */
+    public Builder setNearbyItemDrops(
+        me.sand.minecraftaimod.protobuf.Matrix4D.Builder builderForValue) {
+      if (nearbyItemDropsBuilder_ == null) {
+        nearbyItemDrops_ = builderForValue.build();
+      } else {
+        nearbyItemDropsBuilder_.setMessage(builderForValue.build());
+      }
+      bitField0_ |= 0x00000010;
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>.minecraftai.Matrix4D nearbyItemDrops = 5;</code>
+     */
+    public Builder mergeNearbyItemDrops(me.sand.minecraftaimod.protobuf.Matrix4D value) {
+      if (nearbyItemDropsBuilder_ == null) {
+        if (((bitField0_ & 0x00000010) != 0) &&
+          nearbyItemDrops_ != null &&
+          nearbyItemDrops_ != me.sand.minecraftaimod.protobuf.Matrix4D.getDefaultInstance()) {
+          getNearbyItemDropsBuilder().mergeFrom(value);
+        } else {
+          nearbyItemDrops_ = value;
+        }
+      } else {
+        nearbyItemDropsBuilder_.mergeFrom(value);
+      }
+      bitField0_ |= 0x00000010;
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>.minecraftai.Matrix4D nearbyItemDrops = 5;</code>
+     */
+    public Builder clearNearbyItemDrops() {
+      bitField0_ = (bitField0_ & ~0x00000010);
+      nearbyItemDrops_ = null;
+      if (nearbyItemDropsBuilder_ != null) {
+        nearbyItemDropsBuilder_.dispose();
+        nearbyItemDropsBuilder_ = null;
+      }
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>.minecraftai.Matrix4D nearbyItemDrops = 5;</code>
+     */
+    public me.sand.minecraftaimod.protobuf.Matrix4D.Builder getNearbyItemDropsBuilder() {
+      bitField0_ |= 0x00000010;
+      onChanged();
+      return getNearbyItemDropsFieldBuilder().getBuilder();
+    }
+    /**
+     * <code>.minecraftai.Matrix4D nearbyItemDrops = 5;</code>
+     */
+    public me.sand.minecraftaimod.protobuf.Matrix4DOrBuilder getNearbyItemDropsOrBuilder() {
+      if (nearbyItemDropsBuilder_ != null) {
+        return nearbyItemDropsBuilder_.getMessageOrBuilder();
+      } else {
+        return nearbyItemDrops_ == null ?
+            me.sand.minecraftaimod.protobuf.Matrix4D.getDefaultInstance() : nearbyItemDrops_;
+      }
+    }
+    /**
+     * <code>.minecraftai.Matrix4D nearbyItemDrops = 5;</code>
+     */
+    private com.google.protobuf.SingleFieldBuilderV3<
+        me.sand.minecraftaimod.protobuf.Matrix4D, me.sand.minecraftaimod.protobuf.Matrix4D.Builder, me.sand.minecraftaimod.protobuf.Matrix4DOrBuilder> 
+        getNearbyItemDropsFieldBuilder() {
+      if (nearbyItemDropsBuilder_ == null) {
+        nearbyItemDropsBuilder_ = new com.google.protobuf.SingleFieldBuilderV3<
+            me.sand.minecraftaimod.protobuf.Matrix4D, me.sand.minecraftaimod.protobuf.Matrix4D.Builder, me.sand.minecraftaimod.protobuf.Matrix4DOrBuilder>(
+                getNearbyItemDrops(),
+                getParentForChildren(),
+                isClean());
+        nearbyItemDrops_ = null;
+      }
+      return nearbyItemDropsBuilder_;
+    }
+
+    private me.sand.minecraftaimod.protobuf.Matrix container_;
+    private com.google.protobuf.SingleFieldBuilderV3<
+        me.sand.minecraftaimod.protobuf.Matrix, me.sand.minecraftaimod.protobuf.Matrix.Builder, me.sand.minecraftaimod.protobuf.MatrixOrBuilder> containerBuilder_;
+    /**
+     * <code>.minecraftai.Matrix container = 6;</code>
+     * @return Whether the container field is set.
+     */
+    public boolean hasContainer() {
+      return ((bitField0_ & 0x00000020) != 0);
+    }
+    /**
+     * <code>.minecraftai.Matrix container = 6;</code>
+     * @return The container.
+     */
+    public me.sand.minecraftaimod.protobuf.Matrix getContainer() {
+      if (containerBuilder_ == null) {
+        return container_ == null ? me.sand.minecraftaimod.protobuf.Matrix.getDefaultInstance() : container_;
+      } else {
+        return containerBuilder_.getMessage();
+      }
+    }
+    /**
+     * <code>.minecraftai.Matrix container = 6;</code>
+     */
+    public Builder setContainer(me.sand.minecraftaimod.protobuf.Matrix value) {
+      if (containerBuilder_ == null) {
+        if (value == null) {
+          throw new NullPointerException();
+        }
+        container_ = value;
+      } else {
+        containerBuilder_.setMessage(value);
+      }
+      bitField0_ |= 0x00000020;
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>.minecraftai.Matrix container = 6;</code>
+     */
+    public Builder setContainer(
+        me.sand.minecraftaimod.protobuf.Matrix.Builder builderForValue) {
+      if (containerBuilder_ == null) {
+        container_ = builderForValue.build();
+      } else {
+        containerBuilder_.setMessage(builderForValue.build());
+      }
+      bitField0_ |= 0x00000020;
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>.minecraftai.Matrix container = 6;</code>
+     */
+    public Builder mergeContainer(me.sand.minecraftaimod.protobuf.Matrix value) {
+      if (containerBuilder_ == null) {
+        if (((bitField0_ & 0x00000020) != 0) &&
+          container_ != null &&
+          container_ != me.sand.minecraftaimod.protobuf.Matrix.getDefaultInstance()) {
+          getContainerBuilder().mergeFrom(value);
+        } else {
+          container_ = value;
+        }
+      } else {
+        containerBuilder_.mergeFrom(value);
+      }
+      bitField0_ |= 0x00000020;
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>.minecraftai.Matrix container = 6;</code>
+     */
+    public Builder clearContainer() {
+      bitField0_ = (bitField0_ & ~0x00000020);
+      container_ = null;
+      if (containerBuilder_ != null) {
+        containerBuilder_.dispose();
+        containerBuilder_ = null;
+      }
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>.minecraftai.Matrix container = 6;</code>
+     */
+    public me.sand.minecraftaimod.protobuf.Matrix.Builder getContainerBuilder() {
+      bitField0_ |= 0x00000020;
+      onChanged();
+      return getContainerFieldBuilder().getBuilder();
+    }
+    /**
+     * <code>.minecraftai.Matrix container = 6;</code>
+     */
+    public me.sand.minecraftaimod.protobuf.MatrixOrBuilder getContainerOrBuilder() {
+      if (containerBuilder_ != null) {
+        return containerBuilder_.getMessageOrBuilder();
+      } else {
+        return container_ == null ?
+            me.sand.minecraftaimod.protobuf.Matrix.getDefaultInstance() : container_;
+      }
+    }
+    /**
+     * <code>.minecraftai.Matrix container = 6;</code>
+     */
+    private com.google.protobuf.SingleFieldBuilderV3<
+        me.sand.minecraftaimod.protobuf.Matrix, me.sand.minecraftaimod.protobuf.Matrix.Builder, me.sand.minecraftaimod.protobuf.MatrixOrBuilder> 
+        getContainerFieldBuilder() {
+      if (containerBuilder_ == null) {
+        containerBuilder_ = new com.google.protobuf.SingleFieldBuilderV3<
+            me.sand.minecraftaimod.protobuf.Matrix, me.sand.minecraftaimod.protobuf.Matrix.Builder, me.sand.minecraftaimod.protobuf.MatrixOrBuilder>(
+                getContainer(),
+                getParentForChildren(),
+                isClean());
+        container_ = null;
+      }
+      return containerBuilder_;
+    }
+
+    private double containerType_ ;
+    /**
+     * <code>double containerType = 7;</code>
+     * @return The containerType.
+     */
+    @java.lang.Override
+    public double getContainerType() {
+      return containerType_;
+    }
+    /**
+     * <code>double containerType = 7;</code>
+     * @param value The containerType to set.
+     * @return This builder for chaining.
+     */
+    public Builder setContainerType(double value) {
+      
+      containerType_ = value;
+      bitField0_ |= 0x00000040;
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>double containerType = 7;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearContainerType() {
+      bitField0_ = (bitField0_ & ~0x00000040);
+      containerType_ = 0D;
+      onChanged();
+      return this;
     }
     @java.lang.Override
     public final Builder setUnknownFields(

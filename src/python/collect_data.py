@@ -2,7 +2,7 @@ import socket
 import struct
 import time
 from PPOTrainer import PPOTrainer
-from utils import set_conn, get_state
+from utils import set_conn, get_state, is_action_noOp
 import utils
 import state_pb2
 import torch
@@ -33,6 +33,7 @@ while True:
     obs['PrevActions'] = prev_act_copy
 
     obs_np = {k: (v.cpu().numpy() if isinstance(v, torch.Tensor) else v) for k, v in obs.items()}
+    print(obs_np)
     sock.sendall(struct.pack(">i", 1))  # Let java know to continue and python is ready
 
     size_bytes = sock.recv(4)
@@ -55,16 +56,20 @@ while True:
     action.ParseFromString(buffer)
 
     expertAction = list(action.actions)
-    action_t = torch.tensor(expertAction, dtype=torch.float32).to(DEVICE)
+    if not is_action_noOp(expertAction):
 
-    data.append({
-        "obs" : obs_np,
-        "action" : action_t.cpu().numpy(),
-    })
+        action_t = torch.tensor(expertAction, dtype=torch.float32).to(DEVICE)
 
-    utils.prevActions = action_t.unsqueeze(0)
+        data.append({
+            "obs" : obs_np,
+            "action" : action_t.cpu().numpy(),
+        })
 
-    i += 1
+        print(expertAction)
+
+        utils.prevActions = action_t.unsqueeze(0)
+
+        i += 1
     if i % 500 == 0:
         print(f"Iteration {i} collected {len(data)} samples")
     if i >= 2048:

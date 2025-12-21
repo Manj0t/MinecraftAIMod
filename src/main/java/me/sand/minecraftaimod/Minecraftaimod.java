@@ -1,11 +1,19 @@
 package me.sand.minecraftaimod;
 
+import carpet.script.language.Sys;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import me.sand.minecraftaimod.network.CraftPagesPayload;
+import me.sand.minecraftaimod.network.InteractionPayload;
+import me.sand.minecraftaimod.network.InventoryMovePayload;
+import me.sand.minecraftaimod.network.SelectRecipePayload;
 import me.sand.minecraftaimod.protobuf.*;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
@@ -16,7 +24,7 @@ import net.minecraft.component.type.FoodComponent;
 import net.minecraft.component.type.ToolComponent;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.MovementType;
+import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.LivingEntity;
@@ -27,16 +35,28 @@ import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.entity.projectile.ProjectileUtil;
 import net.minecraft.item.*;
 import net.minecraft.network.packet.c2s.play.PlayerActionC2SPacket;
+import net.minecraft.recipe.*;
+import net.minecraft.recipe.display.RecipeDisplay;
+import net.minecraft.recipe.display.SlotDisplay;
+import net.minecraft.recipe.display.SlotDisplayContexts;
 import net.minecraft.registry.Registries;
+import net.minecraft.registry.Registry;
 import net.minecraft.registry.tag.BlockTags;
 import net.minecraft.registry.tag.ItemTags;
+import net.minecraft.screen.CraftingScreenHandler;
+import net.minecraft.screen.FurnaceScreenHandler;
+import net.minecraft.screen.GenericContainerScreenHandler;
+import net.minecraft.screen.ScreenHandler;
+import net.minecraft.screen.slot.Slot;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
-import net.minecraft.util.Pair;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.context.ContextParameter;
+import net.minecraft.util.context.ContextParameterMap;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.hit.HitResult;
@@ -52,7 +72,6 @@ import java.awt.*;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.SocketTimeoutException;
 import java.util.*;
 import java.util.List;
 
@@ -67,7 +86,6 @@ public class Minecraftaimod implements ModInitializer {
 
     private ServerPlayerEntity agent = null;
     private String agentName = null;
-//    private PlayerInventory agentInventory = null;
     World world = null;
 
 
@@ -85,7 +103,6 @@ public class Minecraftaimod implements ModInitializer {
     private final Map<Integer, Runnable> movementActions = new HashMap<>();
     private final Map<Integer, Runnable> panCam = new HashMap<>();
     private final Map<Tuple3, Float> checkpoints = new HashMap<>();
-//    private HashSet<Point> visitedRegion = new HashSet<>();
 
     private int currentHand = 0;
     private double speed = 0.24;
@@ -130,12 +147,119 @@ public class Minecraftaimod implements ModInitializer {
     public static ServerCommandSource cmdSrc = null;
 
     int prev_num_logs = 0;
-    ServerPlayerEntity expert = null;
 
-    boolean data_collection = false;
+    boolean data_collection = true;
+
+    private boolean tableNearby = false;
+    private boolean tableNearbyLastRecipeSend = false;
+
+    private final int DEFUAL_VAL = 0;
+
+    private volatile boolean inventorySwapped = false;
+    private volatile int invFromSlot = DEFUAL_VAL;
+    private volatile int invToSlot = DEFUAL_VAL;
+
+    // drop
+    private volatile boolean inventoryDropped = false;
+    private volatile int droppedSlot = DEFUAL_VAL;
+    private volatile int droppedAll = DEFUAL_VAL; // 0 = one, 1 = all, -1 = none
+
+    private volatile boolean rightClickThisTick = false;
+    private int rightClickLastTick = 0;
+    private boolean placedBlock = false;
+
+    double[][] prevInv = null;
+    boolean updateCraftingRecipes = false;
+
+    int item_crafted_id = DEFUAL_VAL;
+
     @Override
     public void onInitialize() {
 
+        PayloadTypeRegistry.playC2S().register(
+                InventoryMovePayload.ID,
+                InventoryMovePayload.CODEC
+        );
+
+        PayloadTypeRegistry.playC2S().register(
+                InteractionPayload.ID,
+                InteractionPayload.CODEC
+        );
+
+        PayloadTypeRegistry.playC2S().register(
+                CraftPagesPayload.ID,
+                CraftPagesPayload.CODEC
+        );
+
+        PayloadTypeRegistry.playC2S().register(
+                SelectRecipePayload.ID,
+                SelectRecipePayload.CODEC
+        );
+
+        ServerPlayNetworking.registerGlobalReceiver(
+                InventoryMovePayload.ID,
+                (payload, context) -> {
+                    context.server().execute(() -> {
+                    // ---------- SWAP ----------
+                    if (payload.fromSlot() >= 0 && payload.toSlot() >= 0) {
+                        inventorySwapped = true;
+                        invFromSlot = payload.fromSlot();
+                        invToSlot = payload.toSlot();
+                    }
+
+                    // ---------- DROP ----------
+                    if (payload.dropFlag() == 1) {
+                        inventoryDropped = true;
+                        droppedSlot = payload.dropSlot();
+                        droppedAll = payload.dropAll();
+                    }
+                });
+                }
+        );
+
+        ServerPlayNetworking.registerGlobalReceiver(
+                SelectRecipePayload.ID,
+                (payload, context) -> {
+                    context.server().execute(() -> {
+                        var player = context.player();
+                        var recipeId = payload.recipeId();
+
+                        System.out.println(
+                                "[MinecraftAIMod] Player " + player.getName().getString()
+                                        + " selected recipe " + recipeId
+                        );
+
+                        craft(recipeId);
+                        item_crafted_id = recipeId;
+
+                        // 🔥 THIS is where you:
+                        // - validate
+                        // - craft
+                        // - or forward to your AI pipeline
+                    });
+                }
+        );
+
+
+        ServerPlayNetworking.registerGlobalReceiver(
+                InteractionPayload.ID,
+                (payload, context) -> {
+                    context.server().execute(() -> {
+                        rightClickThisTick = true;
+                    });
+                }
+        );
+
+
+
+        UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
+            if (!world.isClient() && player == agent) {
+                System.out.println("Agent placed block at " + hitResult.getBlockPos());
+                // Your logic here
+                placedBlock = true;
+            }
+            return ActionResult.PASS;
+        });
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             dispatcher.register(
                     literal("start_training")
@@ -177,7 +301,7 @@ public class Minecraftaimod implements ModInitializer {
                                                 //nothing
                                             }
                                             try {
-                                                System.out.println("INFO: Made process");
+//                                                System.out.println("INFO: Made process");
 
                                                 serverSocket = new ServerSocket(agentPort);
                                                 ctx.getSource().sendFeedback(() -> Text.literal("Java Server Ready, Port: " + agentPort + "..."), false);
@@ -187,14 +311,12 @@ public class Minecraftaimod implements ModInitializer {
 
                                                 input = new DataInputStream(socket.getInputStream());
                                                 output = new DataOutputStream(socket.getOutputStream());
-                                                System.out.println("INFO: Socket Connected");
+//                                                System.out.println("INFO: Socket Connected");
 
                                                 int agent_info_dim = 21;
                                                 int numItems = Registries.ITEM.size();
                                                 int numBlocks = Registries.BLOCK.size();
                                                 int numEntities = Registries.ENTITY_TYPE.size();
-
-
 
 
                                                 if(data_collection){
@@ -244,6 +366,26 @@ public class Minecraftaimod implements ModInitializer {
 
                                             return 1;
                 }))));
+            dispatcher.register(
+                    literal("swap").then(argument("slot1", IntegerArgumentType.integer()).then(argument("slot2", IntegerArgumentType.integer()).executes(ctx -> {
+                int slot1 = IntegerArgumentType.getInteger(ctx, "slot1");
+                int slot2 = IntegerArgumentType.getInteger(ctx, "slot2");
+                swap_items(slot1, slot2);
+
+                inventorySwapped = true;
+                invFromSlot = slot1;
+                invToSlot = slot2;
+
+                return 1;
+            }))));
+
+            dispatcher.register(
+                    literal("drop").then(argument("slot1", IntegerArgumentType.integer()).then(argument("all", IntegerArgumentType.integer()).executes(ctx -> {
+                        int slot1 = IntegerArgumentType.getInteger(ctx, "slot1");
+                        boolean all = IntegerArgumentType.getInteger(ctx, "all") == 1 ? true : false;
+                        dropItem(slot1, all);
+                        return 1;
+                    }))));
 
             dispatcher.register(literal("get_port").executes(ctx -> {
                 ctx.getSource().sendFeedback(() -> Text.literal("PORT: " + agentPort), false);
@@ -366,13 +508,15 @@ public class Minecraftaimod implements ModInitializer {
                 waitForNextRollout = true;
                 return;
             }
+    // 3 iron ingots + 2 sticks
+
 //            agent.getHungerManager().setFoodLevel(20);
 //            agent.getHungerManager().setSaturationLevel(20f);
 
             if(waitForNextRollout) {
                 lastPos = null;
                 try {
-                    System.out.println("INFO: Waiting for next rollout");
+//                    System.out.println("INFO: Waiting for next rollout");
 
                     int startRollout = input.readInt();
                     spawnPlayer = true;
@@ -408,19 +552,34 @@ public class Minecraftaimod implements ModInitializer {
             }
 
             if (sendState) {
-                System.out.println("INFO: Sending state");
+//                System.out.println("INFO: Sending state");
                 sendStateInfo(server);
                 sendState = false;
                 recieveAction = true;
                 return;
             }
+
+            if(data_collection && (updateCraftingRecipes || tableNearby != tableNearbyLastRecipeSend)){
+                updateCraftingRecipes = false;
+                List<RecipeEntry<?>> craftableRecipes = getCraftableRecipes(tableNearby);
+                List<List<CraftOption>> pages = buildCraftPages(craftableRecipes);
+
+                ServerPlayNetworking.send(
+                        agent, // ServerPlayerEntity
+                        new CraftPagesPayload(pages)
+                );
+
+                tableNearbyLastRecipeSend = tableNearby;
+
+            }
+
             List<Float> actions = null;
 //            Recieve action
             if (recieveAction) {
                 try {
                     if(data_collection){
                         input.readInt();
-                        System.out.println("INFO: Ready");
+//                        System.out.println("INFO: Ready");
 
                         int[] act = getExpertAction();
 
@@ -429,13 +588,13 @@ public class Minecraftaimod implements ModInitializer {
                             actionBuilder.addActions((float) a);
                         }
                         Action actionMsg = actionBuilder.build();
-                        System.out.println("INFO: Sending Action");
+//                        System.out.println("INFO: Sending Action");
                         byte[] payload = actionMsg.toByteArray();
                         output.writeInt(payload.length);
                         output.write(payload);
                         output.flush();
 
-                        System.out.println("INFO: Getting COntinue");
+//                        System.out.println("INFO: Getting COntinue");
 
 
                         int continue_rollout = input.readInt();
@@ -452,7 +611,6 @@ public class Minecraftaimod implements ModInitializer {
                     actions = action.getActionsList();
 
                     applyAction(actions);
-
 
                     recieveAction = false;
                     sendReward = true;
@@ -515,6 +673,7 @@ public class Minecraftaimod implements ModInitializer {
     private float lastYaw = 0;
     private float lastPitch = 0;
 
+
     private int[] getExpertAction() {
         int movement = 6;
         boolean f = agent.getPlayerInput().forward();
@@ -531,10 +690,15 @@ public class Minecraftaimod implements ModInitializer {
         else if (j) movement = 5;
 
         int item_use = 2;
-        if(agent.isUsingItem()){
+        if(placedBlock || agent.isUsingItem()){
             item_use = 1;
-        }else if(agent.handSwinging){
-            item_use = 0;
+            placedBlock = false;
+//            rightClickThisTick = false;
+            rightClickLastTick = 2;
+        }else if(agent.handSwinging){ // armd swings 2 ticks after right click so set here
+            if(rightClickLastTick > 0) rightClickLastTick -= 1;
+//            else item_use = 0;
+            else item_use = 0;
         }
 //        panCam.put(0, this::lookUp);
 //        panCam.put(1, this::lookDown);
@@ -564,17 +728,53 @@ public class Minecraftaimod implements ModInitializer {
         // Hotbar
         int hotbarSlot = agent.getInventory().getSelectedSlot();
 
-        System.out.println(movement + ", " + item_use + ", " + hotbarSlot + ", " + pan_cam);
+        //swap
+        int fromSlot = invFromSlot;
+        int toSlot = invToSlot;
+
+        //drop
+        int dSlot = droppedSlot;
+        int dAll = droppedAll;
+
+        int crafted_item_id = item_crafted_id;
+
+        int inv_act = 0;
+
+        // Force defauly values just in case something slips through to maintain consistency with agent.
+        if(inventoryDropped || inventorySwapped || item_crafted_id != -1){
+            movement = 6;
+            item_use = 2;
+            pan_cam = 4;
+
+            if(inventorySwapped) inv_act = 1;
+            else if(inventoryDropped) inv_act = 2;
+            else inv_act = 3;
+        }
+
+        inventorySwapped = false;
+        invFromSlot = DEFUAL_VAL;
+        invToSlot = DEFUAL_VAL;
+
+        inventoryDropped = false;
+        droppedAll = DEFUAL_VAL;
+        droppedSlot = DEFUAL_VAL;
+
+        item_crafted_id = DEFUAL_VAL;
+
+//        System.out.println(movement + ", " + item_use + ", " + hotbarSlot + ", " + pan_cam + ", " + swapFlag + ", " + fromSlot + ", " + toSlot + ", " + dropFlag + ", " + dSlot + ", " + dAll + ", "  + crafted + ", " + crafted_item_id);
 
         return new int[] {
+                inv_act,
                 movement,
                 item_use,
                 hotbarSlot,
-                pan_cam
+                pan_cam,
+                fromSlot,
+                toSlot,
+                dSlot,
+                dAll,
+                crafted_item_id
         };
-
-
-
     }
 
     private void resetPlayer() {
@@ -589,6 +789,7 @@ public class Minecraftaimod implements ModInitializer {
         stuckCounter = 0;
         prev_num_logs = 0;
     }
+
     private double getReward(List<Float> actions) {
          try {
                 Vec3d currentPos = new Vec3d(agent.getX(), agent.getY(), agent.getZ());
@@ -702,51 +903,69 @@ public class Minecraftaimod implements ModInitializer {
 
     private void applyAction(List<Float> actions) {
         if (agent == null) return;
-        int movement = actions.get(0).intValue();
+        int inv_act = actions.get(0).intValue();
+        if(inv_act == 0) {
+            int movement = actions.get(1).intValue();
 //        int jump = actions.get(1).intValue();
-        int item_use = actions.get(1).intValue();
-        int hotbar_idx = actions.get(2).intValue();
-        int pan_id = actions.get(3).intValue();
+            int item_use = actions.get(2).intValue();
+            int hotbar_idx = actions.get(3).intValue();
+            int pan_id = actions.get(4).intValue();
 
-        Runnable movementAction = null;
+            Runnable movementAction = null;
 
-        if(movement <= 4){ // only care about actual movement, not jumping or standing still
-            prevMoveAction = movement;
-            movementAction = movementActions.get(movement);
+            if (movement <= 4) { // only care about actual movement, not jumping or standing still
+                prevMoveAction = movement;
+                movementAction = movementActions.get(movement);
+            } else {
+                prevMoveAction = -1;
+            }
+            if (movementAction != null) {
+                movementAction.run();
+            }
+
+            int jump = 0;
+            if (movement == 4 || movement == 5) {
+                jump = 1;
+            }
+
+            if (jump > 0 && agent.isOnGround() || agent.isInLava() || agent.isSubmergedInWater()) {
+                agent.jump();
+            }
+
+
+            // 2 is don't use item
+            if (item_use == 0)
+                tryHit();
+            else if (item_use == 1)
+                tryPlace();
+            else
+                stopMiningIfNeeded();
+
+            if (hotbar_idx != currentHand) {
+                agent.getInventory().setSelectedSlot(hotbar_idx);
+                currentHand = hotbar_idx;
+            }
+
+            Runnable pan_cam_action = panCam.get(pan_id);
+            if (pan_cam_action != null) {
+                pan_cam_action.run();
+            }
+        }else if(inv_act == 1){
+            int from_slot = actions.get(5).intValue();
+            int to_slot = actions.get(6).intValue();
+
+            swap_items(from_slot, to_slot);
+        }else if(inv_act == 2){
+            int drop_slot = actions.get(7).intValue();
+            boolean drop_all = actions.get(8).intValue() == 1;
+
+            dropItem(drop_slot, drop_all);
         }else{
-            prevMoveAction = -1;
-        }
-        if (movementAction != null) {
-            movementAction.run();
+            craft(actions.get(9).intValue());
         }
 
-        int jump = 0;
-        if(movement == 4 || movement == 5){
-            jump = 1;
-        }
-
-        if(jump > 0 && agent.isOnGround() || agent.isInLava() || agent.isSubmergedInWater()) {
-            agent.jump();
-        }
-
-
-        // 2 is don't use item
-        if(item_use == 0)
-            tryHit();
-        else if(item_use == 1)
-            tryPlace();
-        else
-            stopMiningIfNeeded();
-
-        if(hotbar_idx != currentHand){
-            agent.getInventory().setSelectedSlot(hotbar_idx);
-            currentHand = hotbar_idx;
-        }
-
-        Runnable pan_cam_action = panCam.get(pan_id);
-        if (pan_cam_action != null) {
-            pan_cam_action.run();
-        }
+//        System.out.println("ACTION: ");
+//        System.out.println(actions);
 
 
     }
@@ -806,6 +1025,281 @@ public class Minecraftaimod implements ModInitializer {
             return;
         }
         stopMiningIfNeeded();
+    }
+
+    private boolean dropItem(int slot, boolean all){
+        PlayerInventory agentInventory = agent.getInventory();
+        ItemStack itemStack = agentInventory.getStack(slot);
+
+        if(itemStack.isEmpty()) return false;
+
+        ItemStack toDrop;
+        if(all){
+            toDrop = itemStack.copy();
+            agentInventory.setStack(slot, ItemStack.EMPTY);
+        }else{
+            toDrop = itemStack.split(1);
+            agentInventory.setStack(slot, itemStack);
+        }
+
+        agent.dropItem(toDrop, false);
+        return true;
+    }
+
+    private boolean swap_items(int slot1, int slot2) {
+        if(slot1 > 41 || slot2 > 41 || slot1 < 0 || slot2 < 0) return false;
+        if (slot1 == slot2) return false; // Wasted action, punish?
+        PlayerInventory agentInventory = agent.getInventory();
+
+        ItemStack stack1 = agentInventory.getStack(slot1);
+        ItemStack stack2 = agentInventory.getStack(slot2);
+
+        if (stack1.isEmpty() && stack2.isEmpty()) return false; // Wasted action, punish?
+
+        boolean slot1IsEquipment = slot1 >= 36 && slot1 <= 40;
+        boolean slot2IsEquipment = slot2 >= 36 && slot2 <= 40;
+
+        if (slot1IsEquipment && !stack2.isEmpty() && !canEquipInSlot(stack2, slot1)) return false;
+        if (slot2IsEquipment && !stack1.isEmpty() && !canEquipInSlot(stack1, slot2)) return false;
+
+        agentInventory.setStack(slot1, stack2);
+        agentInventory.setStack(slot2, stack1);
+
+        return true;
+    }
+
+    private boolean canEquipInSlot(ItemStack stack, int slot){
+        var equippable = stack.getComponents().get(DataComponentTypes.EQUIPPABLE);
+        if(equippable == null) return false;
+
+        EquipmentSlot eqSlot = getEquipmentSlotFromInventorySlot(slot);
+
+        if(eqSlot == null) return false;
+
+        return eqSlot == equippable.slot();
+    }
+
+    private EquipmentSlot getEquipmentSlotFromInventorySlot(int slot){
+        return switch(slot){
+            case 36 -> EquipmentSlot.FEET;    // Boots
+            case 37 -> EquipmentSlot.LEGS;    // Leggings
+            case 38 -> EquipmentSlot.CHEST;   // Chestplate
+            case 39 -> EquipmentSlot.HEAD;    // Helmet
+            case 40 -> EquipmentSlot.OFFHAND; // Offhand
+            default -> null; // Not an equipment slot
+        };
+    }
+
+    private List<RecipeEntry<?>> getCraftableRecipes(boolean hasTable) {
+        ServerRecipeManager recipeManager = world.getServer().getRecipeManager();
+
+        List<RecipeEntry<?>> craftable = new ArrayList<>();
+
+        for(RecipeEntry<?> entry : recipeManager.values()){
+            Recipe<?> recipe = entry.value();
+
+            if (!(recipe instanceof ShapedRecipe || recipe instanceof ShapelessRecipe)) {
+                continue;
+            }
+
+            if(requiresTable(recipe) && !hasTable) continue;
+
+            if(canPlayerCraftRecipe(recipe, false))
+                craftable.add(entry);
+        }
+
+        return craftable;
+    }
+
+    private List<List<CraftOption>> buildCraftPages(List<RecipeEntry<?>> recipes){
+        int PER_PAGE = 5;
+//        int currentPage = 0;
+        List<List<CraftOption>> pages = new ArrayList<>();
+        List<CraftOption> flat = new ArrayList<>();
+
+        ContextParameterMap context = new ContextParameterMap.Builder()
+                .add(SlotDisplayContexts.REGISTRIES, world.getServer().getRegistryManager())
+                .build(SlotDisplayContexts.CONTEXT_TYPE);
+
+        for(RecipeEntry<?> entry : recipes) {
+            Recipe<?> recipe = entry.value();
+
+            Identifier itemId = null;
+            for (RecipeDisplay display : recipe.getDisplays()) {
+                ItemStack stack = display.result().getFirst(context);
+                if (!stack.isEmpty()) {
+                    itemId = Registries.ITEM.getId(stack.getItem());
+                    break; // stop after first
+                }
+            }
+            if(itemId == null) continue;
+
+            Item targetItem = Registries.ITEM.get(itemId);
+            int item_id = Registries.ITEM.getRawId(targetItem);
+            String displayName = targetItem.getName().getString();
+
+            flat.add(new CraftOption(
+                    item_id,
+                    displayName
+            ));
+
+            if(flat.size() == PER_PAGE){
+                pages.add(flat);
+                flat = new ArrayList<>();
+            }
+        }
+        if (!flat.isEmpty()) {
+            pages.add(flat);
+        }
+        return pages;
+    }
+
+    private void craft(int item_id){
+//        ServerRecipeManager recipeManager = world.getServer().getRecipeManager();
+
+        Item targetItem = Registries.ITEM.get(item_id);
+        targetItem.getRecipeRemainder();
+        ServerRecipeManager recipeManager =  world.getServer().getRecipeManager();
+
+        ContextParameterMap context = new ContextParameterMap.Builder()
+                .add(SlotDisplayContexts.REGISTRIES, world.getServer().getRegistryManager())
+                .build(SlotDisplayContexts.CONTEXT_TYPE);
+
+        List<RecipeEntry<?>> matchingRecipes = new ArrayList<>();
+
+        for(RecipeEntry<?> recipeEntry : recipeManager.values()){
+            Recipe<?> recipe = recipeEntry.value();
+            List<RecipeDisplay> displays = recipe.getDisplays();
+
+            for(RecipeDisplay display : displays){
+                SlotDisplay resultDisplay = display.result();
+
+                if(slotDisplayContainsItem(resultDisplay, targetItem, context)){
+                    matchingRecipes.add(recipeEntry);
+                    break;
+                }
+            }
+        }
+        for(RecipeEntry<?> recipeEntry : matchingRecipes){
+            if(canPlayerCraftRecipe(recipeEntry.value(), true)){
+                System.out.println("Can craft: " + recipeEntry.id());
+                // Actually remove items and craft
+                break;
+            }
+        }
+
+    }
+
+    private void debugCrafting(Map<Ingredient, Integer> itemMap){
+        System.out.println("Player needs items");
+        for (Map.Entry<Ingredient, Integer> entry : itemMap.entrySet()) {
+            Ingredient ingredient = entry.getKey();
+            int value = entry.getValue(); // auto-unboxing Integer → int
+
+            System.out.println("Some Item -> " + value);
+        }
+    }
+
+    private boolean canPlayerCraftRecipe(Recipe<?> recipe, boolean craft){
+        IngredientPlacement placement = recipe.getIngredientPlacement();
+
+        if(requiresTable(recipe)){
+            if(!tableNearby) {
+                System.out.println("Table needs items");
+                return false;
+            }
+        }
+        // Get all ingredient slots
+        //Map the needed ingredients so we can use it to search the player inventory
+        Map<Ingredient, Integer> itemMap = new HashMap<>();
+        for(Ingredient ingredient : placement.getIngredients()){
+            itemMap.put(ingredient,  itemMap.getOrDefault(ingredient, 0) + 1);
+        }
+        if(craft)
+            debugCrafting(itemMap);
+
+        // Check if the player has said items, list item as removable if player has items
+        Map<Integer, Integer> removeIfSuccessful = new HashMap<>();
+        for (Map.Entry<Ingredient, Integer> entry : itemMap.entrySet()) {
+            Ingredient key = entry.getKey();
+            int value = entry.getValue(); // auto-unboxing Integer → int
+
+            if(!playerContains(key, value, removeIfSuccessful)) return false;
+        }
+
+
+        if(craft)
+            craftItem(recipe, removeIfSuccessful);
+
+        return true;
+    }
+
+    private boolean requiresTable(Recipe<?> recipe){
+        //Item placement is strict
+        if(recipe instanceof ShapedRecipe shapedRecipe){
+            return shapedRecipe.getWidth() > 2 || shapedRecipe.getHeight() > 2;
+        }
+
+        //Item placement does not matter
+        if(recipe instanceof ShapelessRecipe shapelessRecipe){
+            return shapelessRecipe.getIngredientPlacement().getIngredients().size() > 4;
+        }
+
+        // other recipes such as smelting, etc
+        return false;
+    }
+
+    private boolean playerContains(Ingredient ingredient, int needed, Map<Integer, Integer> removeIfSuccessful){
+        PlayerInventory agentInventory = agent.getInventory();
+        for(int i = 0; i < 36; i++) {
+            ItemStack stack = agentInventory.getStack(i);
+            if (stack.isEmpty()) continue;
+            if (!ingredient.test(stack)) continue;
+            int take = Math.min(stack.getCount(), needed);
+
+            if (take > 0) {
+                removeIfSuccessful.put(i, take);
+                needed -= take;
+            }
+
+            if (needed <= 0) {
+                return true;
+            }
+        }
+
+        // Ignore offhand item for now
+        return false;
+
+    }
+
+    private void craftItem(Recipe<?> recipe, Map<Integer, Integer> removeIfSuccessful ){
+        PlayerInventory agentInventory = agent.getInventory();
+
+        for(Map.Entry<Integer, Integer> entry : removeIfSuccessful.entrySet()){
+            int slot = entry.getKey();
+            int count = entry.getValue(); // auto-unboxing Integer → int
+
+            ItemStack stack = agentInventory.getStack(slot);
+            stack.decrement(count);
+        }
+
+//        Give player the item here somehow
+        ItemStack result = recipe.craft(null, world.getServer().getRegistryManager()); // Get result
+        agent.getInventory().insertStack(result);
+    }
+    private boolean slotDisplayContainsItem(SlotDisplay slotDisplay, Item targetItem, ContextParameterMap context) {
+        // SlotDisplay can be different types (ItemStackSlotDisplay, ItemSlotDisplay, etc.)
+        // You'll need to check the stacks it represents
+
+        List<ItemStack> stacks = slotDisplay.getStacks(context); // This gets all possible ItemStacks
+
+        for (ItemStack stack : stacks) {
+            if (stack.getItem() == targetItem) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private HitResult raycastWithEntities(ServerPlayerEntity player, double reach) {
@@ -963,6 +1457,8 @@ public class Minecraftaimod implements ModInitializer {
         // Get nearby Block information
         double[][][] nearbyBlocks = getNearbyBlocks();
 
+        double[][][][] nearbyItems = getNearbyItemDrops();
+
         // prolly could hard code this into the function?
         List<Double> agentInfoList = new ArrayList<>(agentInfo.length);
         for (double value : agentInfo) {
@@ -1000,12 +1496,75 @@ public class Minecraftaimod implements ModInitializer {
             nearbyBlocksMatrix.addMatrix(matrixBuilder);
         }
 
-        State stateInfo = State.newBuilder()
-                .addAllAgentInfo(agentInfoList)
-                .setInventory(inventoryMatrix)
-                .setNearbyEntities(nearbyEntitiesMatrix)
-                .setNearbyBlocks(nearbyBlocksMatrix)
-                .build();
+        Matrix4D.Builder nearbyItemsMatrix = Matrix4D.newBuilder();
+        for(double[][][] matrix3D : nearbyItems) {
+            Matrix3D.Builder matrix3DBuilder = Matrix3D.newBuilder();
+            for(double[][] matrix : matrix3D) {
+                Matrix.Builder matrixBuilder = Matrix.newBuilder();
+                for(double[] row : matrix) {
+                    Row.Builder rowBuilder = Row.newBuilder();
+                    for(double value : row) {
+                        rowBuilder.addValues(value);
+                    }
+                    matrixBuilder.addRows(rowBuilder);
+                }
+                matrix3DBuilder.addMatrix(matrixBuilder);
+            }
+            nearbyItemsMatrix.addMatrix3D(matrix3DBuilder);
+        }
+
+        ScreenHandler handler = agent.currentScreenHandler;
+        ContainerType openContainer = getContainerType(handler);
+
+        State stateInfo = null;
+        if(openContainer == ContainerType.UNKNOWN){
+            //Close container
+        }else if(openContainer != ContainerType.NONE){
+            double[][] container = getContainer(handler);
+
+            Matrix.Builder conatinerMatrix = Matrix.newBuilder();
+            for(double[] row : container) {
+                Row.Builder rowBuilder = Row.newBuilder();
+                for(double value : row) {
+                    rowBuilder.addValues(value);
+                }
+                conatinerMatrix.addRows(rowBuilder);
+            }
+
+            stateInfo = State.newBuilder()
+                    .addAllAgentInfo(agentInfoList)
+                    .setInventory(inventoryMatrix)
+                    .setNearbyEntities(nearbyEntitiesMatrix)
+                    .setNearbyBlocks(nearbyBlocksMatrix)
+                    .setNearbyItemDrops(nearbyItemsMatrix)
+                    .setContainerType(openContainer.ordinal())
+                    .setContainer(conatinerMatrix)
+                    .build();
+
+            System.out.println("Container open " + openContainer);
+            for (int i = 0; i < container.length; i++) {
+                boolean nonZero = false;
+                for (double v : container[i]) {
+                    if (v != 0.0) {
+                        nonZero = true;
+                        break;
+                    }
+                }
+                if (nonZero) {
+                    System.out.println("Slot " + i + ": " + Arrays.toString(container[i]));
+                }
+            }
+        }
+        else {
+            stateInfo = State.newBuilder()
+                    .addAllAgentInfo(agentInfoList)
+                    .setInventory(inventoryMatrix)
+                    .setNearbyEntities(nearbyEntitiesMatrix)
+                    .setNearbyBlocks(nearbyBlocksMatrix)
+                    .setNearbyItemDrops(nearbyItemsMatrix)
+                    .setContainerType(openContainer.ordinal())
+                    .build();
+        }
 
         try {
             byte[] payload = stateInfo.toByteArray();
@@ -1252,62 +1811,105 @@ public class Minecraftaimod implements ModInitializer {
      */
     public double[][] getInventory(){
         PlayerInventory agentInventory = agent.getInventory();
+
         double[][] inventoryArray =  new double[41][9];
 
         for(int i = 0; i <= 40; i++) {
             ItemStack stack = agentInventory.getStack(i);
-            Item item = stack.getItem();
 
-            int item_id = Registries.ITEM.getRawId(item);
-            double count = stack.getCount() / 64.0;
-
-            int max = stack.getMaxDamage();
-            double durability;
-
-            int isDamageable = (max > 0) ? 1 : 0;
-            if (max > 0) {
-                durability = (double)(max - stack.getDamage()) / (double) max; // in [0,1]
-            } else {
-                durability = 0.0;
-            }
-
-            EquippableComponent equip = item.getComponents().get(DataComponentTypes.EQUIPPABLE);
-            int isArmor = 0;
-            if(equip != null) {
-                EquipmentSlot slot = equip.slot();
-                isArmor = (slot.getType() == EquipmentSlot.Type.HUMANOID_ARMOR) ? 1 : 0;
-            }
-
-            boolean toolBool = item.getComponents().contains(DataComponentTypes.TOOL);
-            boolean foodBool = item.getComponents().contains(DataComponentTypes.FOOD);
-            boolean weaponBool = item == Items.WOODEN_SWORD || item == Items.STONE_SWORD || item == Items.IRON_SWORD || item == Items.GOLDEN_SWORD || item == Items.DIAMOND_SWORD || item == Items.NETHERITE_SWORD;
-            boolean rangedWeaponBool = item instanceof BowItem || item instanceof CrossbowItem || item instanceof TridentItem;
-
-            int isTool = toolBool ? 1 : 0;
-            int isFood = foodBool ? 1 : 0;
-            int isWeapon = 0;
-
-            if(weaponBool || rangedWeaponBool) {
-                isWeapon = 1;
-                isTool = 0;
-            }
-
-            int[] itemType = {isArmor, isFood, isTool, isWeapon};
-
-            double[] utility_value = getUtility(item, itemType);
-
-            inventoryArray[i][0] = item_id;
-            inventoryArray[i][1] = isArmor;
-            inventoryArray[i][2] = isFood;
-            inventoryArray[i][3] = isTool;
-            inventoryArray[i][4] = isWeapon;
-            inventoryArray[i][5] = utility_value[0];
-            inventoryArray[i][6] = utility_value[1];
-            inventoryArray[i][7] = count;
-            inventoryArray[i][8] = durability;
+            double[] itemInfo = getItemInfo(stack);
+            inventoryArray[i] = itemInfo;
         }
 
+        if(prevInv == null || !Arrays.deepEquals(inventoryArray, prevInv)){
+            prevInv = deepCopy(inventoryArray);
+            updateCraftingRecipes = true;
+        }
         return inventoryArray;
+    }
+
+    public double[][] getContainer(ScreenHandler handler){
+        List<Slot> slots = handler.slots;
+
+        double[][] container = new double[slots.size()][];
+        for(int i = 0; i < slots.size(); i++){
+            Slot slot = slots.get(i);
+            ItemStack stack = slot.getStack();
+
+            double[] itemInfo = getItemInfo(stack);
+
+            container[i] = itemInfo;
+        }
+
+        return container;
+    }
+
+    ContainerType getContainerType(ScreenHandler handler){
+        boolean containerOpen = handler != null && handler != agent.playerScreenHandler;
+        if(!containerOpen) return ContainerType.NONE; //No conatiner
+
+        if(handler instanceof GenericContainerScreenHandler gcsh) {
+            int rows = gcsh.getRows();
+            return rows == 6 ? ContainerType.DOUBLE_CHEST : ContainerType.CHEST;
+        }
+        else if(handler instanceof FurnaceScreenHandler){
+            return ContainerType.FURNACE;
+        }
+        // if(handler instanceof CraftingScreenHandler)
+        // Random error code. Agent handles crafting without UI, signal to close container right away.
+        // Don't want the agent to mess with any other containers either just yet. close container NOW
+        return ContainerType.UNKNOWN;
+    }
+
+    private double[] getItemInfo(ItemStack stack){
+        Item item = stack.getItem();
+
+        int item_id = Registries.ITEM.getRawId(item);
+        double count = stack.getCount() / 64.0;
+
+        int max = stack.getMaxDamage();
+        double durability;
+
+        if (max > 0) {
+            durability = (double)(max - stack.getDamage()) / (double) max; // in [0,1]
+        } else {
+            durability = 0.0;
+        }
+
+        EquippableComponent equip = item.getComponents().get(DataComponentTypes.EQUIPPABLE);
+        int isArmor = 0;
+        if(equip != null) {
+            EquipmentSlot slot = equip.slot();
+            isArmor = (slot.getType() == EquipmentSlot.Type.HUMANOID_ARMOR) ? 1 : 0;
+        }
+
+        boolean toolBool = item.getComponents().contains(DataComponentTypes.TOOL);
+        boolean foodBool = item.getComponents().contains(DataComponentTypes.FOOD);
+        boolean weaponBool = item == Items.WOODEN_SWORD || item == Items.STONE_SWORD || item == Items.IRON_SWORD || item == Items.GOLDEN_SWORD || item == Items.DIAMOND_SWORD || item == Items.NETHERITE_SWORD;
+        boolean rangedWeaponBool = item instanceof BowItem || item instanceof CrossbowItem || item instanceof TridentItem;
+
+        int isTool = toolBool ? 1 : 0;
+        int isFood = foodBool ? 1 : 0;
+        int isWeapon = 0;
+
+        if(weaponBool || rangedWeaponBool) {
+            isWeapon = 1;
+            isTool = 0;
+        }
+
+        int[] itemType = {isArmor, isFood, isTool, isWeapon};
+
+        double[] utility_value = getUtility(item, itemType);
+
+        return new double[]{item_id, isArmor, isFood, isTool, isWeapon, utility_value[0], utility_value[1], count, durability};
+    }
+
+    private static double[][] deepCopy(double[][] src) {
+        double[][] copy = new double[src.length][];
+        for (int i = 0; i < src.length; i++) {
+            copy[i] = Arrays.copyOf(src[i], src[i].length);
+        }
+        return copy;
     }
 
     /**
@@ -1359,6 +1961,8 @@ public class Minecraftaimod implements ModInitializer {
     public double[][][] getNearbyBlocks() {
         int coreRadius = 8;
         int verticalRadius = 4; // Vertical space not as significant
+        int tableWithinXBlocks = 3;
+        int maxTableDistSq = tableWithinXBlocks * tableWithinXBlocks;
 
         double[][][] foundBlocks = new double[coreRadius * 2 + 1][verticalRadius * 2 + 1][coreRadius * 2 + 1];
 
@@ -1366,11 +1970,25 @@ public class Minecraftaimod implements ModInitializer {
         int agentBlockY = agent.getBlockY();
         int agentBlockZ = agent.getBlockZ();
 
+        tableNearby = false;
+
         for(int x = agentBlockX - coreRadius; x <= agentBlockX + coreRadius; x++) {
             for (int y = agentBlockY - verticalRadius; y <= agentBlockY + verticalRadius; y++) {
                 for(int z = agentBlockZ - coreRadius; z <= agentBlockZ + coreRadius; z++) {
                     BlockPos pos = new BlockPos(x, y, z);
                     BlockState state = agent.getEntityWorld().getBlockState(pos);
+
+                    if(state.isOf(Blocks.CRAFTING_TABLE)){
+                        int dx = x - agentBlockX;
+                        int dy = y - agentBlockY;
+                        int dz = z - agentBlockZ;
+
+                        if (Math.abs(dx) <= tableWithinXBlocks &&
+                                Math.abs(dy) <= tableWithinXBlocks &&
+                                Math.abs(dz) <= tableWithinXBlocks) {
+                            tableNearby = true;
+                        }
+                    }
 
                     boolean isLog = state.isIn(BlockTags.LOGS);
                     if(isLog) {
@@ -1395,4 +2013,52 @@ public class Minecraftaimod implements ModInitializer {
 
         return foundBlocks;
     }
+
+    public double[][][][] getNearbyItemDrops(){
+        int coreRadius = 8;
+        int verticalRadius = 2; // Vertical space not as significant
+
+        double[][][][] foundItems = new double[coreRadius * 2 + 1][verticalRadius * 2 + 1][coreRadius * 2 + 1][9];
+
+        for (int i = 0; i < foundItems.length; i++)
+            for (int j = 0; j < foundItems[i].length; j++)
+                for (int k = 0; k < foundItems[i][j].length; k++)
+                    foundItems[i][j][k] = new double[9];
+
+        int agentBlockX = agent.getBlockX();
+        int agentBlockY = agent.getBlockY();
+        int agentBlockZ = agent.getBlockZ();
+
+        Box box = new Box(
+                agent.getX() - coreRadius, agent.getY() - verticalRadius, agent.getZ() - coreRadius,
+                agent.getX() + coreRadius, agent.getY() + verticalRadius, agent.getZ() + coreRadius
+        );
+
+
+        List<ItemEntity> items = world.getEntitiesByClass(
+                ItemEntity.class,
+                box,
+                e -> true
+        );
+
+        for(ItemEntity item : items){
+            int itemX = item.getBlockX() - agentBlockX + coreRadius;
+            int itemY = item.getBlockY() - agentBlockY + verticalRadius;
+            int itemZ = item.getBlockZ() - agentBlockZ + coreRadius;
+
+            ItemStack stack = item.getStack();
+            double[] itemInfo = getItemInfo(stack);
+
+            if (itemX < 0 || itemY < 0 || itemZ < 0 ||
+                    itemX >= foundItems.length ||
+                    itemY >= foundItems[0].length ||
+                    itemZ >= foundItems[0][0].length)
+                continue;
+
+            foundItems[itemX][itemY][itemZ] = itemInfo;
+        }
+        return foundItems;
+    }
+
+
 }

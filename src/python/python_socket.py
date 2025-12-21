@@ -69,7 +69,7 @@ model.to(DEVICE)
 ppo = PPOTrainer(model)
 
 # load_path = "models/iter_saves/continuing_25.pth"
-load_path = "imitate/model_0.849609375_epoch_240.pth"
+load_path = "imitate/model_0NO.849609375_epoch_240.pth"
 # Saved_State_1131
 # .35.pth
 iteration = 0
@@ -178,16 +178,27 @@ for i in range(iteration, 10000):
         'Inventory': torch.tensor(flat(train_data['InventoryObs'])[permute_idxs], dtype=torch.float32, device=DEVICE),
         'Blocks': torch.tensor(flat(train_data['BlocksObs'])[permute_idxs], dtype=torch.int64, device=DEVICE),
         'Entities': torch.tensor(flat(train_data['EntitiesObs'])[permute_idxs], dtype=torch.float32, device=DEVICE),
+        'NearbyItemDrops': torch.tensor(flat(train_data['NearbyItemDropsObs'])[permute_idxs], dtype=torch.float32, device=DEVICE),
         'AgentInfo': torch.tensor(flat(train_data['AgentInfoObs'])[permute_idxs], dtype=torch.float32, device=DEVICE),
         'PrevActions': torch.tensor(flat(train_data['PrevActionsObs'])[permute_idxs], dtype=torch.float32,
                                     device=DEVICE),
     }
 
     act = {
+        'inv_act': torch.tensor(flat(train_data['inv_act'])[permute_idxs], dtype=torch.int64, device=DEVICE),
+
         'movement': torch.tensor(flat(train_data['movement'])[permute_idxs], dtype=torch.int64, device=DEVICE),
         'item_use': torch.tensor(flat(train_data['item_use'])[permute_idxs], dtype=torch.int64, device=DEVICE),
         'hotbar': torch.tensor(flat(train_data['hotbar'])[permute_idxs], dtype=torch.int64, device=DEVICE),
         'pan_cam': torch.tensor(flat(train_data['pan_cam'])[permute_idxs], dtype=torch.int64, device=DEVICE),
+
+        'from_slot': torch.tensor(flat(train_data['from_slot'])[permute_idxs], dtype=torch.int64, device=DEVICE),
+        'to_slot': torch.tensor(flat(train_data['to_slot'])[permute_idxs], dtype=torch.int64, device=DEVICE),
+
+        'drop_slot': torch.tensor(flat(train_data['drop_slot'])[permute_idxs], dtype=torch.int64, device=DEVICE),
+        'drop_all_flag': torch.tensor(flat(train_data['drop_all_flag'])[permute_idxs], dtype=torch.int64, device=DEVICE),
+
+        'craft_item_id': torch.tensor(flat(train_data['drop_all_flag'])[permute_idxs], dtype=torch.int64, device=DEVICE),
     }
 
     advantages = torch.tensor(flat(train_data['advantage'])[permute_idxs], dtype=torch.float32, device=DEVICE)
@@ -195,18 +206,20 @@ for i in range(iteration, 10000):
 
     summed_log_probs = torch.tensor(flat(train_data['log_prob'])[permute_idxs], dtype=torch.float32, device=DEVICE)
 
-    log_probs = {
-        "old_movement_lp": torch.tensor(flat(train_data['movement_log_prob'])[permute_idxs], dtype=torch.float32, device=DEVICE),
-        "old_item_use_lp": torch.tensor(flat(train_data['item_use_log_prob'])[permute_idxs], dtype=torch.float32, device=DEVICE),
-        "old_hotbar_lp": torch.tensor(flat(train_data['hotbar_log_prob'])[permute_idxs], dtype=torch.float32, device=DEVICE),
-        "old_pan_cam_lp": torch.tensor(flat(train_data['pan_cam_log_prob'])[permute_idxs], dtype=torch.float32, device=DEVICE),
-    }
+    # Not needed anymore
+    # log_probs = {
+    #     "old_movement_lp": torch.tensor(flat(train_data['movement_log_prob'])[permute_idxs], dtype=torch.float32, device=DEVICE),
+    #     "old_item_use_lp": torch.tensor(flat(train_data['item_use_log_prob'])[permute_idxs], dtype=torch.float32, device=DEVICE),
+    #     "old_hotbar_lp": torch.tensor(flat(train_data['hotbar_log_prob'])[permute_idxs], dtype=torch.float32, device=DEVICE),
+    #     "old_pan_cam_lp": torch.tensor(flat(train_data['pan_cam_log_prob'])[permute_idxs], dtype=torch.float32, device=DEVICE),
+    # }
 
     returns = torch.tensor(flat(train_data['returns'])[permute_idxs], dtype=torch.float32, device=DEVICE)
 
     print_cuda_mem("Before Training")
 
-    ppo.train_policy(obs, act, log_probs, summed_log_probs, advantages, returns)
+    # old_log_probs not used. temporarily set default value to check
+    ppo.train_policy(obs, act, 0, summed_log_probs, advantages, returns)
     # ppo.train_value(obs, returns)
     print('********************************')
     print('****** Completed Training ******')

@@ -4,6 +4,7 @@
   "package": "me.sand.minecraftaimod.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+//    "ServerInventoryDropMixin"
   ],
   "injectors": {
     "defaultRequire": 1

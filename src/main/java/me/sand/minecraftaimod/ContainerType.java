@@ -5,6 +5,7 @@ public enum ContainerType {
     CHEST,
     DOUBLE_CHEST,
     FURNACE,
+    PlayerInventory,
     CRAFTING,
     MERCHANT,
     UNKNOWN

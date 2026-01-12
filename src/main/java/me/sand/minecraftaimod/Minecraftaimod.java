@@ -17,6 +17,7 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.block.entity.AbstractFurnaceBlockEntity;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.AttributeModifiersComponent;
 import net.minecraft.component.type.EquippableComponent;
@@ -67,6 +68,7 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.spongepowered.asm.mixin.Unique;
 
 import java.awt.*;
 import java.io.*;
@@ -148,7 +150,7 @@ public class Minecraftaimod implements ModInitializer {
 
     int prev_num_logs = 0;
 
-    boolean data_collection = true;
+    boolean data_collection = false;
 
     private boolean tableNearby = false;
     private boolean tableNearbyLastRecipeSend = false;
@@ -172,6 +174,12 @@ public class Minecraftaimod implements ModInitializer {
     boolean updateCraftingRecipes = false;
 
     int item_crafted_id = DEFUAL_VAL;
+
+    boolean container_open_last_tick = false;
+    boolean crafted = false;
+
+    float block_break_prog = 0.0f;
+    float prev_block_break_prog = 0.0f;
 
     @Override
     public void onInitialize() {
@@ -231,11 +239,7 @@ public class Minecraftaimod implements ModInitializer {
 
                         craft(recipeId);
                         item_crafted_id = recipeId;
-
-                        // 🔥 THIS is where you:
-                        // - validate
-                        // - craft
-                        // - or forward to your AI pipeline
+                        crafted = true;
                     });
                 }
         );
@@ -330,10 +334,7 @@ public class Minecraftaimod implements ModInitializer {
 
                                                     resetPlayer = true;
                                                 }
-    //                                            out.println("exit");
-    //                                            System.out.println("Python replied: " + in.readLine());
 
-    //                                            socket.close();
                                             } catch (Exception e) {
                                                 e.printStackTrace();
                                                 System.out.println("ERROR: FAILED ");
@@ -342,9 +343,9 @@ public class Minecraftaimod implements ModInitializer {
 
                                             movementActions.put(0, this::moveForward);
                                             movementActions.put(1, this::moveBackward);
-                                            movementActions.put(2, this::moveLeft);
-                                            movementActions.put(3, this::moveRight);
-                                            movementActions.put(4, this::moveForward);
+                                            movementActions.put(3, this::moveLeft);
+                                            movementActions.put(4, this::moveRight);
+                                            movementActions.put(2, this::moveForward);
                                             movementActions.put(5, null);
 
                                             panCam.put(0, this::lookUp);
@@ -508,30 +509,15 @@ public class Minecraftaimod implements ModInitializer {
                 waitForNextRollout = true;
                 return;
             }
-    // 3 iron ingots + 2 sticks
-
-//            agent.getHungerManager().setFoodLevel(20);
-//            agent.getHungerManager().setSaturationLevel(20f);
 
             if(waitForNextRollout) {
                 lastPos = null;
                 try {
-//                    System.out.println("INFO: Waiting for next rollout");
 
                     int startRollout = input.readInt();
                     spawnPlayer = true;
                     server.getCommandManager().parseAndExecute(server.getCommandSource(), "/time set day");
                     resetPlayer();
-                    //                            loop += 1;
-                    //                            if(loop % 5 == 0 ){
-                    //                                if(isLavaArea)
-                    //                                    server.getCommandManager().parseAndExecute(server.getCommandSource(), "/setworldspawn 194 74 -208");
-                    //                                else
-                    //                                    server.getCommandManager().parseAndExecute(server.getCommandSource(), "/setworldspawn 460 95 -225");
-                    //
-                    //                                isLavaArea = !isLavaArea;
-                    //                            }
-                    //                            System.out.println("startRollout: " + startRollout);
                     if(startRollout > 0) {
                         waitForNextRollout = false;
                         sendState = true;
@@ -545,14 +531,12 @@ public class Minecraftaimod implements ModInitializer {
 
             if(!server.getPlayerManager().getPlayerList().contains(agent)){
                 penalty = -10.0f;
-                //                                done_tag = 1;
                 server.getCommandManager().parseAndExecute(server.getCommandSource(), "/player " + agentName + " spawn");
                 agent = null;
                 return;
             }
 
             if (sendState) {
-//                System.out.println("INFO: Sending state");
                 sendStateInfo(server);
                 sendState = false;
                 recieveAction = true;
@@ -579,8 +563,6 @@ public class Minecraftaimod implements ModInitializer {
                 try {
                     if(data_collection){
                         input.readInt();
-//                        System.out.println("INFO: Ready");
-
                         int[] act = getExpertAction();
 
                         Action.Builder actionBuilder = Action.newBuilder();
@@ -588,14 +570,10 @@ public class Minecraftaimod implements ModInitializer {
                             actionBuilder.addActions((float) a);
                         }
                         Action actionMsg = actionBuilder.build();
-//                        System.out.println("INFO: Sending Action");
                         byte[] payload = actionMsg.toByteArray();
                         output.writeInt(payload.length);
                         output.write(payload);
                         output.flush();
-
-//                        System.out.println("INFO: Getting COntinue");
-
 
                         int continue_rollout = input.readInt();
                         if(continue_rollout == 1){
@@ -623,7 +601,6 @@ public class Minecraftaimod implements ModInitializer {
             if (sendReward) {
                 try{
                     float reward = (float) getReward(actions) + penalty;
-//                            System.out.println("Reward: " + reward);
                     int done_tag = penalty == -10.0f ? 1 : 0;
                     penalty = 0;
 
@@ -654,40 +631,79 @@ public class Minecraftaimod implements ModInitializer {
         });
 
     }
-
-//    private void collect_training_data(MinecraftServer server){
-//        if (expert == null) {
-//            for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
-//                if (agentName.equals(player.getName().getString().toLowerCase())) {
-//                    expert = player;
-//                    world = expert.getEntityWorld();
-//                    resetPlayer();
-//                    server.getCommandManager().parseAndExecute(server.getCommandSource(), "/gamemode survival " + agentName);
-//                    System.out.println("found");
-//                    break;
-//                }
-//            }
-//            if (agent == null) return;
-//        }
-//    }
     private float lastYaw = 0;
     private float lastPitch = 0;
 
-
     private int[] getExpertAction() {
-        int movement = 6;
+        ScreenHandler handler = agent.currentScreenHandler;
+        ContainerType openContainer = getContainerType(handler);
+
+        State stateInfo = null;
+        if(openContainer == ContainerType.PlayerInventory) {
+            openContainer = ContainerType.NONE;
+        }else if(openContainer == ContainerType.UNKNOWN){
+            //Close container
+            agent.closeHandledScreen();
+            openContainer = ContainerType.NONE;
+        }
+
+        if(openContainer != ContainerType.NONE){
+            int container_size = get_Container_size(openContainer);
+
+            int inv_slot = -1;
+            int cont_slot = -1;
+
+            if(inventorySwapped){
+                if(invFromSlot > container_size){
+                    inv_slot = mapClientToServerSlotForContHandling(invFromSlot - container_size);
+                    cont_slot = invToSlot;
+                }else{
+                    inv_slot = mapClientToServerSlotForContHandling(invToSlot - container_size);
+                    cont_slot = invFromSlot;
+                }
+            }
+
+            inventorySwapped = false;
+            invFromSlot = DEFUAL_VAL;
+            invToSlot = DEFUAL_VAL;
+
+            inventoryDropped = false;
+            droppedAll = DEFUAL_VAL;
+            droppedSlot = DEFUAL_VAL;
+
+            item_crafted_id = DEFUAL_VAL;
+
+            container_open_last_tick = true;
+
+            return new int[]{
+                  inv_slot,
+                  cont_slot,
+                  0
+            };
+        }else if(container_open_last_tick){
+            container_open_last_tick = false;
+            return new int[]{
+                    0,
+                    0,
+                    1
+            };
+        }
+
+        int movement = 4;
+        int side_move = 2;
         boolean f = agent.getPlayerInput().forward();
         boolean b = agent.getPlayerInput().backward();
         boolean l = agent.getPlayerInput().left();
         boolean r = agent.getPlayerInput().right();
         boolean j = agent.getPlayerInput().jump();
 
-        if (f && j) movement = 4;
+        if (f && j) movement = 2;
         else if (f) movement = 0;
         else if (b) movement = 1;
-        else if (l) movement = 2;
-        else if (r) movement = 3;
-        else if (j) movement = 5;
+        else if (j) movement = 3;
+
+        if (l) side_move = 0;
+        else if (r) side_move = 1;
 
         int item_use = 2;
         if(placedBlock || agent.isUsingItem()){
@@ -695,16 +711,10 @@ public class Minecraftaimod implements ModInitializer {
             placedBlock = false;
 //            rightClickThisTick = false;
             rightClickLastTick = 2;
-        }else if(agent.handSwinging){ // armd swings 2 ticks after right click so set here
+        }else if(agent.handSwinging){
             if(rightClickLastTick > 0) rightClickLastTick -= 1;
-//            else item_use = 0;
             else item_use = 0;
         }
-//        panCam.put(0, this::lookUp);
-//        panCam.put(1, this::lookDown);
-//        panCam.put(2, this::rotateLeft);
-//        panCam.put(3, this::rotateRight);
-//        panCam.put(4, null);
         // Camera pan
         float yaw = agent.getYaw();
         float pitch = agent.getPitch();
@@ -729,8 +739,8 @@ public class Minecraftaimod implements ModInitializer {
         int hotbarSlot = agent.getInventory().getSelectedSlot();
 
         //swap
-        int fromSlot = invFromSlot;
-        int toSlot = invToSlot;
+        int fromSlot = mapClientToServerSlot(invFromSlot);
+        int toSlot = mapClientToServerSlot(invToSlot);
 
         //drop
         int dSlot = droppedSlot;
@@ -741,7 +751,7 @@ public class Minecraftaimod implements ModInitializer {
         int inv_act = 0;
 
         // Force defauly values just in case something slips through to maintain consistency with agent.
-        if(inventoryDropped || inventorySwapped || item_crafted_id != -1){
+        if(inventoryDropped || inventorySwapped || crafted){
             movement = 6;
             item_use = 2;
             pan_cam = 4;
@@ -760,12 +770,14 @@ public class Minecraftaimod implements ModInitializer {
         droppedSlot = DEFUAL_VAL;
 
         item_crafted_id = DEFUAL_VAL;
+        crafted = false;
 
 //        System.out.println(movement + ", " + item_use + ", " + hotbarSlot + ", " + pan_cam + ", " + swapFlag + ", " + fromSlot + ", " + toSlot + ", " + dropFlag + ", " + dSlot + ", " + dAll + ", "  + crafted + ", " + crafted_item_id);
 
         return new int[] {
                 inv_act,
                 movement,
+                side_move,
                 item_use,
                 hotbarSlot,
                 pan_cam,
@@ -775,6 +787,40 @@ public class Minecraftaimod implements ModInitializer {
                 dAll,
                 crafted_item_id
         };
+    }
+
+    private int mapClientToServerSlot(int clientSlot) {
+        if (clientSlot == -1) return -1;
+
+        // Hotbar: client 36-44 -> server 0-8
+        if (36 <= clientSlot && clientSlot <= 44) {
+            return clientSlot - 36;
+        }
+
+        // Armor slots: client 5-8 -> server 39,38,37,36 (helmet to boots)
+        if (5 <= clientSlot && clientSlot <= 8) {
+            return 39 - (clientSlot - 5);
+        }
+
+        // Off-hand: client 45 -> server 40
+        if (clientSlot == 45) {
+            return 40;
+        }
+
+        // Main inventory 9-35: same on both sides
+        // Result slot 0: same on both sides
+        return clientSlot;
+    }
+
+    private int mapClientToServerSlotForContHandling(int clientSlot) {
+        if (clientSlot == -1) return -1;
+
+        // Hotbar: client 36-44 -> server 0-8
+        if (clientSlot <= 26) {
+            return clientSlot + 9;
+        }
+
+        return clientSlot - 27;
     }
 
     private void resetPlayer() {
@@ -790,115 +836,134 @@ public class Minecraftaimod implements ModInitializer {
         prev_num_logs = 0;
     }
 
-    private double getReward(List<Float> actions) {
-         try {
-                Vec3d currentPos = new Vec3d(agent.getX(), agent.getY(), agent.getZ());
+private double getReward(List<Float> actions) {
+    try {
+        Vec3d currentPos = new Vec3d(agent.getX(), agent.getY(), agent.getZ());
 
-                if (lastPos == null) {
-                    lastPos = currentPos;
-                    agentPrevhealth = agent.getHealth();
-                    return 0.0;
-                }
+        if (lastPos == null) {
+            lastPos = currentPos;
+            agentPrevhealth = agent.getHealth();
+            return 0.0;
+        }
 
-                double reward = 0.0;
+        double reward = 0.0;
 
-                int rx = (int)Math.floor(currentPos.x / REGION);
-                int rz = (int)Math.floor(currentPos.z / REGION);
+        // movement reward
+        double dx = currentPos.x - lastPos.x;
+        double dz = currentPos.z - lastPos.z;
+        double dist = Math.sqrt(dx*dx + dz*dz);
 
-                Tuple3 mazePos = new Tuple3(rx, 0, rz);
-                boolean isNew = visitedRegion.add(mazePos);
+        if (dist > 0.05) {
+            reward += dist * 0.5;  // Small reward for moving
+        }
 
-            if (nearestWood != null) {
-                double current_dist_to_wood = Math.sqrt(Math.pow(currentPos.x - nearestWood.getX(), 2) + Math.pow(currentPos.z - nearestWood.getZ(), 2));
-                double prev_dist_to_wood = Math.sqrt(Math.pow(lastPos.x - nearestWood.getX(), 2) + Math.pow(lastPos.z - nearestWood.getZ(), 2));
-                double diff = (prev_dist_to_wood - current_dist_to_wood);
-                reward += diff;
+        // Tree finding
+        if (nearestWood != null) {
+            double current_dist_to_wood = Math.sqrt(
+                    Math.pow(currentPos.x - nearestWood.getX(), 2) +
+                            Math.pow(currentPos.z - nearestWood.getZ(), 2)
+            );
+            double prev_dist_to_wood = Math.sqrt(
+                    Math.pow(lastPos.x - nearestWood.getX(), 2) +
+                            Math.pow(lastPos.z - nearestWood.getZ(), 2)
+            );
 
-                HitResult lookingAt = raycastWithEntities(agent, 4.5);
+            // Reward for getting closer to tree
+            double approach_reward = (prev_dist_to_wood - current_dist_to_wood);
+            reward += approach_reward * 3.0;
 
-                if (lookingAt instanceof BlockHitResult bhs) {
-                    BlockPos pos = bhs.getBlockPos();
-                    BlockState state = agent.getEntityWorld().getBlockState(pos);
+            // Looking at tree
+            HitResult lookingAt = raycastWithEntities(agent, 4.5);
 
-                    boolean isLog = state.isIn(BlockTags.LOGS);
-                    if (isLog && doLookWood) {
-                        reward += 1;
+            if (lookingAt instanceof BlockHitResult bhs) {
+                BlockPos pos = bhs.getBlockPos();
+                BlockState state = agent.getEntityWorld().getBlockState(pos);
+                boolean isLog = state.isIn(BlockTags.LOGS);
+
+                if (isLog) {
+                    // Bigger reward for actually looking at the log
+                    reward += 2.0;
+
+                    // mining prog
+                    if (block_break_prog > prev_block_break_prog) {
+                        // Reward proportional to mining progress
+                        float progress_delta = block_break_prog - prev_block_break_prog;
+                        reward += progress_delta * 20.0;
                     }
-                }
 
-                if (current_dist_to_wood <= 2.5) {
-                    visitedWood.add(new Tuple3(nearestWood.getX(), nearestWood.getY(), nearestWood.getZ()));
-                    nearestWood = null;
+                    prev_block_break_prog = block_break_prog;
                 }
             }
 
-            var agentInventory = agent.getInventory();
-            int num_logs = 0;
-            for(int i = 0; i <= agentInventory.size(); i++) {
-                ItemStack stack = agentInventory.getStack(i);
-                if (stack != null || stack.isEmpty()) continue;
-
-                if(stack.isIn(ItemTags.LOGS)){
-                    num_logs += stack.getCount();
-                }
-            }
-
-            if(num_logs > prev_num_logs){
-                reward += 30; // Big reward, this is current goal
-            }
-            prev_num_logs = num_logs;
-
-                // ---------------------------
-                // Movement reward
-                // ---------------------------
-                double dx = currentPos.x - lastPos.x;
-                double dz = currentPos.z - lastPos.z;
-                double dist = Math.sqrt(dx*dx + dz*dz);
-
-//                if (dist > 0.05)
-//                    reward += dist * 0.2;
-
-                // ---------------------------
-                // Collision penalty
-                // ---------------------------
-                boolean isTryingToMove = actions.getFirst() <= 4;
-                boolean collided = agent.horizontalCollision;
-
-                if (collided && isTryingToMove) {
-                    reward -= 0.25;
-                    if(DEBUGSTUCK){
-                        cmdSrc.sendFeedback(() -> Text.literal("Agent is Stuck"), false);
-                    }
-                }
-
-                // ---------------------------
-                // Jump penalty
-                // ---------------------------
-                boolean jumped = (actions.getFirst() == 4 || actions.getFirst() == 5);
-
-                if (jumped)
-                    reward -= 0.05;
-
-                if (!agent.isOnGround() && !agent.isInLava())
-                    reward -= 0.01;
-
-                // ---------------------------
-                // Lava / fire / damage
-                // ---------------------------
-                if (agent.isInLava() || agent.isOnFire())
-                    reward -= 1.0;
-
-                if (agent.getHealth() < agentPrevhealth)
-                    reward -= 1.0;
-
-                lastPos = currentPos;
-                agentPrevhealth = agent.getHealth();
-                return reward;
-
-            } catch (Exception e) {
-                return 0.0;
+            // Remove visited trees from consideration
+            if (current_dist_to_wood <= 2.5) {
+                visitedWood.add(new Tuple3(
+                        nearestWood.getX(),
+                        nearestWood.getY(),
+                        nearestWood.getZ()
+                ));
+                nearestWood = null;
             }
         }
+        // Log collection reward
+        var agentInventory = agent.getInventory();
+        int num_logs = 0;
+        for(int i = 0; i <= agentInventory.size(); i++) {
+            ItemStack stack = agentInventory.getStack(i);
+            if (stack == null || stack.isEmpty()) continue;
+
+            if(stack.isIn(ItemTags.LOGS)){
+                num_logs += stack.getCount();
+            }
+        }
+
+        if(num_logs > prev_num_logs){
+            int logs_gained = num_logs - prev_num_logs;
+            reward += logs_gained * 50.0;
+        }
+        prev_num_logs = num_logs;
+
+        // Small penalty for standing still
+        if (dist < 0.05) {
+            reward -= 0.1;
+        }
+
+        // Penalty for collision (bumping into things)
+        boolean isTryingToMove = actions.get(1) <= 4;
+        if (agent.horizontalCollision && isTryingToMove) {
+            reward -= 0.5;
+        }
+
+        // Penalty for unnecessary jumping
+        boolean jumped = (actions.get(1) == 2 || actions.get(1) == 3);
+        if (jumped) {
+            reward -= 0.1;
+        }
+
+        // Penalty for being in air (discourages random jumping)
+        if (!agent.isOnGround() && !agent.isInLava()) {
+            reward -= 0.05;
+        }
+
+        // Big penalties for damage
+        if (agent.isInLava() || agent.isOnFire()) {
+            reward -= 5.0;
+        }
+
+        if (agent.getHealth() < agentPrevhealth) {
+            double damage = agentPrevhealth - agent.getHealth();
+            reward -= damage * 2.0;
+        }
+
+        lastPos = currentPos;
+        agentPrevhealth = agent.getHealth();
+
+        return reward;
+
+    } catch (Exception e) {
+        return 0.0;
+    }
+}
 
 
     private void applyAction(List<Float> actions) {
@@ -906,14 +971,19 @@ public class Minecraftaimod implements ModInitializer {
         int inv_act = actions.get(0).intValue();
         if(inv_act == 0) {
             int movement = actions.get(1).intValue();
-//        int jump = actions.get(1).intValue();
-            int item_use = actions.get(2).intValue();
-            int hotbar_idx = actions.get(3).intValue();
-            int pan_id = actions.get(4).intValue();
+            int side_movement = actions.get(2).intValue();
+            int item_use = actions.get(3).intValue();
+            int hotbar_idx = actions.get(4).intValue();
+            int pan_id = actions.get(5).intValue();
 
             Runnable movementAction = null;
-
-            if (movement <= 4) { // only care about actual movement, not jumping or standing still
+            movementActions.put(0, this::moveForward);
+            movementActions.put(1, this::moveBackward);
+            movementActions.put(3, this::moveLeft);
+            movementActions.put(4, this::moveRight);
+            movementActions.put(2, this::moveForward);
+            movementActions.put(5, null);
+            if (movement <= 2) { // only care about actual movement, not jumping or standing still
                 prevMoveAction = movement;
                 movementAction = movementActions.get(movement);
             } else {
@@ -923,8 +993,11 @@ public class Minecraftaimod implements ModInitializer {
                 movementAction.run();
             }
 
+            Runnable side_move = movementActions.get(side_movement + 3);
+            if(side_movement == 0 || side_movement == 1) side_move.run();
+
             int jump = 0;
-            if (movement == 4 || movement == 5) {
+            if (movement == 2 || movement == 3) {
                 jump = 1;
             }
 
@@ -951,17 +1024,27 @@ public class Minecraftaimod implements ModInitializer {
                 pan_cam_action.run();
             }
         }else if(inv_act == 1){
-            int from_slot = actions.get(5).intValue();
-            int to_slot = actions.get(6).intValue();
+            int from_slot = actions.get(6).intValue();
+            int to_slot = actions.get(7).intValue();
 
             swap_items(from_slot, to_slot);
         }else if(inv_act == 2){
-            int drop_slot = actions.get(7).intValue();
-            boolean drop_all = actions.get(8).intValue() == 1;
+            int drop_slot = actions.get(8).intValue();
+            boolean drop_all = actions.get(9).intValue() == 1;
 
             dropItem(drop_slot, drop_all);
+        }else if(inv_act == 3){
+            craft(actions.get(10).intValue());
         }else{
-            craft(actions.get(9).intValue());
+            int inv_slot = actions.get(1).intValue();
+            int cont_slot = actions.get(2).intValue();
+            int close_cont = actions.get(3).intValue();
+
+            if(close_cont == 1){
+                agent.closeHandledScreen();
+            }else{
+                swap_items(inv_slot, cont_slot);
+            }
         }
 
 //        System.out.println("ACTION: ");
@@ -974,59 +1057,64 @@ public class Minecraftaimod implements ModInitializer {
     private int miningTicks = 0;
     private Direction miningDir = null;
 
-    private void tryHit() {
-        HitResult hit = raycastWithEntities(agent, 4.5);
-        agent.swingHand(Hand.MAIN_HAND); // Swings
-        if(hit instanceof EntityHitResult ehr){
-            Entity target = ehr.getEntity();
-            agent.swingHand(Hand.MAIN_HAND);
-            agent.attack(target);
-            agent.resetLastAttackedTicks();
-        }
-        else if(hit instanceof BlockHitResult bhr) {
 
-            BlockPos pos = bhr.getBlockPos();
-//            Direction dir = bhr.getSide();
-            // Start/continue mining'
-            BlockState state = world.getBlockState(pos);
-            if(!pos.equals(miningPos)) {
-                stopMiningIfNeeded();
-                agent.interactionManager.processBlockBreakingAction(pos, PlayerActionC2SPacket.Action.START_DESTROY_BLOCK, miningDir, world.getHeight(), 0);
+private void tryHit() {
+    HitResult hit = raycastWithEntities(agent, 4.5);
+    agent.swingHand(Hand.MAIN_HAND);
 
-                miningPos = bhr.getBlockPos().toImmutable();
-                miningDir = bhr.getSide();
-                miningTicks = 0;
-                return;
-            }
-            miningTicks++;
-            float delta = state.calcBlockBreakingDelta(agent, world, pos);
-            float progress = delta * (miningTicks + 1);
+    if(hit instanceof EntityHitResult ehr){
+        Entity target = ehr.getEntity();
+        agent.attack(target);
+        agent.resetLastAttackedTicks();
+    }
+    else if(hit instanceof BlockHitResult bhr) {
+        BlockPos pos = bhr.getBlockPos();
+        BlockState state = world.getBlockState(pos);
 
-            // If block is fully mined, STOP will break it
-            if (progress >= 0.99f) {
-                boolean isLog = state.isIn(BlockTags.LOGS);
-                if (isLog && doLookWood) {
-                    penalty += 10;
-                }
+        if(!pos.equals(miningPos)) {
+            stopMiningIfNeeded();
+            agent.interactionManager.processBlockBreakingAction(
+                    pos,
+                    PlayerActionC2SPacket.Action.START_DESTROY_BLOCK,
+                    bhr.getSide(),  // Use actual side
+                    world.getHeight(),
+                    0
+            );
 
-
-                agent.interactionManager.processBlockBreakingAction(
-                        pos,
-                        PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK,
-                        miningDir,
-                        world.getHeight(),
-                        0
-                );
-                miningPos = null;
-                miningTicks = 0;
-                miningDir = null;
-            }
-
+            miningPos = pos.toImmutable();
+            miningDir = bhr.getSide();
+            miningTicks = 0;
+            block_break_prog = 0.0f;
+            prev_block_break_prog = 0.0f;
             return;
         }
-        stopMiningIfNeeded();
-    }
 
+        miningTicks++;
+        float delta = state.calcBlockBreakingDelta(agent, world, pos);
+        block_break_prog = delta * (miningTicks + 1);
+
+        if (block_break_prog >= 1.0f) {
+            // Successfully broke block
+            agent.interactionManager.processBlockBreakingAction(
+                    pos,
+                    PlayerActionC2SPacket.Action.STOP_DESTROY_BLOCK,
+                    miningDir,
+                    world.getHeight(),
+                    0
+            );
+
+            // Reset everything
+            block_break_prog = 0.0f;
+            prev_block_break_prog = 0.0f;
+            miningPos = null;
+            miningTicks = 0;
+            miningDir = null;
+        }
+
+        return;
+    }
+    stopMiningIfNeeded();
+}
     private boolean dropItem(int slot, boolean all){
         PlayerInventory agentInventory = agent.getInventory();
         ItemStack itemStack = agentInventory.getStack(slot);
@@ -1043,6 +1131,24 @@ public class Minecraftaimod implements ModInitializer {
         }
 
         agent.dropItem(toDrop, false);
+        return true;
+    }
+
+    private boolean swap_container_items(int inv_slot_idx, int container_slot_idx, ScreenHandler handler, ContainerType type){
+        List<Slot> slots = handler.slots;
+
+        int size = get_Container_size(type);
+        if(container_slot_idx < 0 || container_slot_idx >= size) return false;
+
+        Slot container_slot = slots.get(container_slot_idx);
+        ItemStack container_stack = container_slot.getStack();
+
+        PlayerInventory agentInv = agent.getInventory();
+        ItemStack inv_stack =  agentInv.getStack(inv_slot_idx);
+
+        agentInv.insertStack(inv_slot_idx, container_stack);
+        container_slot.insertStack(inv_stack);
+
         return true;
     }
 
@@ -1289,7 +1395,6 @@ public class Minecraftaimod implements ModInitializer {
     }
     private boolean slotDisplayContainsItem(SlotDisplay slotDisplay, Item targetItem, ContextParameterMap context) {
         // SlotDisplay can be different types (ItemStackSlotDisplay, ItemSlotDisplay, etc.)
-        // You'll need to check the stacks it represents
 
         List<ItemStack> stacks = slotDisplay.getStacks(context); // This gets all possible ItemStacks
 
@@ -1431,20 +1536,6 @@ public class Minecraftaimod implements ModInitializer {
         clip_velocity();
     }
 
-
-//    private void jump(){
-//        if (agent.isOnGround()) {
-//            Vec3d vel = agent.getVelocity();
-//            agent.setVelocity(vel.x, 0.5, vel.z);
-//            wasOnGround = true;
-//
-//        }
-//    }
-
-    private void updateHand(int jump){
-
-    }
-
     private void sendStateInfo(MinecraftServer server){
         double[] agentInfo = getAgentInfo();
         // Get agent inventory
@@ -1517,54 +1608,41 @@ public class Minecraftaimod implements ModInitializer {
         ContainerType openContainer = getContainerType(handler);
 
         State stateInfo = null;
-        if(openContainer == ContainerType.UNKNOWN){
+        if(openContainer == ContainerType.PlayerInventory) {
+            openContainer = ContainerType.NONE;
+        }else if(openContainer == ContainerType.UNKNOWN){
             //Close container
-        }else if(openContainer != ContainerType.NONE){
-            double[][] container = getContainer(handler);
-
-            Matrix.Builder conatinerMatrix = Matrix.newBuilder();
-            for(double[] row : container) {
-                Row.Builder rowBuilder = Row.newBuilder();
-                for(double value : row) {
-                    rowBuilder.addValues(value);
-                }
-                conatinerMatrix.addRows(rowBuilder);
-            }
-
-            stateInfo = State.newBuilder()
-                    .addAllAgentInfo(agentInfoList)
-                    .setInventory(inventoryMatrix)
-                    .setNearbyEntities(nearbyEntitiesMatrix)
-                    .setNearbyBlocks(nearbyBlocksMatrix)
-                    .setNearbyItemDrops(nearbyItemsMatrix)
-                    .setContainerType(openContainer.ordinal())
-                    .setContainer(conatinerMatrix)
-                    .build();
-
-            System.out.println("Container open " + openContainer);
-            for (int i = 0; i < container.length; i++) {
-                boolean nonZero = false;
-                for (double v : container[i]) {
-                    if (v != 0.0) {
-                        nonZero = true;
-                        break;
-                    }
-                }
-                if (nonZero) {
-                    System.out.println("Slot " + i + ": " + Arrays.toString(container[i]));
-                }
-            }
+            agent.closeHandledScreen();
+            openContainer = ContainerType.NONE;
         }
-        else {
-            stateInfo = State.newBuilder()
-                    .addAllAgentInfo(agentInfoList)
-                    .setInventory(inventoryMatrix)
-                    .setNearbyEntities(nearbyEntitiesMatrix)
-                    .setNearbyBlocks(nearbyBlocksMatrix)
-                    .setNearbyItemDrops(nearbyItemsMatrix)
-                    .setContainerType(openContainer.ordinal())
-                    .build();
+
+        double[][] container = getContainer(handler, openContainer);
+        double[] containerMask = getContainerMask(openContainer);
+
+        Matrix.Builder conatinerMatrix = Matrix.newBuilder();
+        for(double[] row : container) {
+            Row.Builder rowBuilder = Row.newBuilder();
+            for(double value : row) {
+                rowBuilder.addValues(value);
+            }
+            conatinerMatrix.addRows(rowBuilder);
         }
+
+        List<Double> containerMaskList = new ArrayList<>(containerMask.length);
+        for (double value : containerMask) {
+            containerMaskList.add(value);
+        }
+
+        stateInfo = State.newBuilder()
+                .addAllAgentInfo(agentInfoList)
+                .setInventory(inventoryMatrix)
+                .setNearbyEntities(nearbyEntitiesMatrix)
+                .setNearbyBlocks(nearbyBlocksMatrix)
+                .setNearbyItemDrops(nearbyItemsMatrix)
+                .setContainerType(openContainer.ordinal())
+                .setContainer(conatinerMatrix)
+                .addAllContainerMask(containerMaskList)
+                .build();
 
         try {
             byte[] payload = stateInfo.toByteArray();
@@ -1699,6 +1777,7 @@ public class Minecraftaimod implements ModInitializer {
                 mainHandSlot,
                 time,
                 lightLevel,
+                block_break_prog,
                 looking_at,
                 row[0],
                 row[1],
@@ -1812,7 +1891,7 @@ public class Minecraftaimod implements ModInitializer {
     public double[][] getInventory(){
         PlayerInventory agentInventory = agent.getInventory();
 
-        double[][] inventoryArray =  new double[41][9];
+        double[][] inventoryArray =  new double[41][10];
 
         for(int i = 0; i <= 40; i++) {
             ItemStack stack = agentInventory.getStack(i);
@@ -1828,11 +1907,13 @@ public class Minecraftaimod implements ModInitializer {
         return inventoryArray;
     }
 
-    public double[][] getContainer(ScreenHandler handler){
+    public double[][] getContainer(ScreenHandler handler, ContainerType type){
+        if(type == ContainerType.NONE) return new double[54][10];
         List<Slot> slots = handler.slots;
+        int size = get_Container_size(type);
 
-        double[][] container = new double[slots.size()][];
-        for(int i = 0; i < slots.size(); i++){
+        double[][] container = new double[54][];
+        for(int i = 0; i < size; i++){
             Slot slot = slots.get(i);
             ItemStack stack = slot.getStack();
 
@@ -1841,7 +1922,24 @@ public class Minecraftaimod implements ModInitializer {
             container[i] = itemInfo;
         }
 
+        for(int i = size; i < 54; i++){
+            container[i] = new double[10];
+        }
+
         return container;
+    }
+
+    public double [] getContainerMask(ContainerType type){
+        if(type == ContainerType.NONE) return new double[54];
+
+        int size = get_Container_size(type);
+
+        double[] mask = new double[54];
+
+        for(int i = 0; i < size; i++)
+            mask[i] = 1;
+
+        return mask;
     }
 
     ContainerType getContainerType(ScreenHandler handler){
@@ -1855,10 +1953,18 @@ public class Minecraftaimod implements ModInitializer {
         else if(handler instanceof FurnaceScreenHandler){
             return ContainerType.FURNACE;
         }
+
         // if(handler instanceof CraftingScreenHandler)
         // Random error code. Agent handles crafting without UI, signal to close container right away.
         // Don't want the agent to mess with any other containers either just yet. close container NOW
         return ContainerType.UNKNOWN;
+    }
+
+    private int get_Container_size(ContainerType type){
+        if(type == ContainerType.CHEST) return 27;
+        if(type == ContainerType.DOUBLE_CHEST) return 54;
+        if(type == ContainerType.FURNACE) return 3;
+        return -1;
     }
 
     private double[] getItemInfo(ItemStack stack){
@@ -1887,21 +1993,23 @@ public class Minecraftaimod implements ModInitializer {
         boolean foodBool = item.getComponents().contains(DataComponentTypes.FOOD);
         boolean weaponBool = item == Items.WOODEN_SWORD || item == Items.STONE_SWORD || item == Items.IRON_SWORD || item == Items.GOLDEN_SWORD || item == Items.DIAMOND_SWORD || item == Items.NETHERITE_SWORD;
         boolean rangedWeaponBool = item instanceof BowItem || item instanceof CrossbowItem || item instanceof TridentItem;
+        boolean fuelBool = world.getFuelRegistry().isFuel(stack);
 
         int isTool = toolBool ? 1 : 0;
         int isFood = foodBool ? 1 : 0;
         int isWeapon = 0;
+        int isFuel = fuelBool ? 1 : 0;
 
         if(weaponBool || rangedWeaponBool) {
             isWeapon = 1;
             isTool = 0;
         }
 
-        int[] itemType = {isArmor, isFood, isTool, isWeapon};
+        int[] itemType = {isArmor, isFood, isTool, isWeapon, isFuel};
 
         double[] utility_value = getUtility(item, itemType);
 
-        return new double[]{item_id, isArmor, isFood, isTool, isWeapon, utility_value[0], utility_value[1], count, durability};
+        return new double[]{item_id, isArmor, isFood, isTool, isWeapon, isFuel, utility_value[0], utility_value[1], count, durability};
     }
 
     private static double[][] deepCopy(double[][] src) {
@@ -2016,14 +2124,14 @@ public class Minecraftaimod implements ModInitializer {
 
     public double[][][][] getNearbyItemDrops(){
         int coreRadius = 8;
-        int verticalRadius = 2; // Vertical space not as significant
+        int verticalRadius = 3; // Vertical space not as significant
 
-        double[][][][] foundItems = new double[coreRadius * 2 + 1][verticalRadius * 2 + 1][coreRadius * 2 + 1][9];
+        double[][][][] foundItems = new double[coreRadius * 2 + 1][verticalRadius * 2 + 1][coreRadius * 2 + 1][10];
 
         for (int i = 0; i < foundItems.length; i++)
             for (int j = 0; j < foundItems[i].length; j++)
                 for (int k = 0; k < foundItems[i][j].length; k++)
-                    foundItems[i][j][k] = new double[9];
+                    foundItems[i][j][k] = new double[10];
 
         int agentBlockX = agent.getBlockX();
         int agentBlockY = agent.getBlockY();

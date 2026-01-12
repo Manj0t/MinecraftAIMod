@@ -5,12 +5,13 @@ from torch.distributions import Categorical, Bernoulli
 import numpy as np
 import CNNDebugger
 
-batch_size = 1024
+batch_size = 256
 
 
 class PPOTrainer():
-    def __init__(self, actor_critic, ppo_clip_val=0.2, target_kl_div=0.15, max_policy_train_iters=8, value_train_iters=10, policy_lr=3e-3):
+    def __init__(self, actor_critic, cont_model, ppo_clip_val=0.2, target_kl_div=0.10, max_policy_train_iters=10, value_train_iters=10, policy_lr=3e-4):
         self.ac = actor_critic
+        self.cont_model = cont_model
         self.ppo_clip_val = ppo_clip_val
         self.target_kl_div = target_kl_div
         self.max_policy_train_iters = max_policy_train_iters
@@ -21,6 +22,7 @@ class PPOTrainer():
         policy_params = (
                  list(self.ac.inv_action_type.parameters()) +
                  list(self.ac.movement_policy.parameters()) +
+                 list(self.ac.move_side_policy.parameters()) +
                  list(self.ac.pan_camera.parameters()) +
                  list(self.ac.item_use_policy.parameters()) +
                  list(self.ac.hotbar_policy.parameters()) +
@@ -31,18 +33,27 @@ class PPOTrainer():
                  list(self.ac.craft_item_id.parameters())
                 )
 
-        # self.value_optimizer = optim.Adam(value_params, lr=value_lr)
-        # self.policy_optimizer = optim.Adam(policy_params, lr=policy_lr)
+        cont_shared_params = list(self.cont_model.shared_layers.parameters())
+        cont_policy_params = (
+            list(self.cont_model.close_container.parameters()) +
+            list(self.cont_model.container_slot.parameters()) +
+            list(self.cont_model.inventory_slot.parameters())
+        )
+
+        cont_value_params = list(self.cont_model.value_layer.parameters())
 
         self.optimizer = optim.Adam(shared_params + value_params + policy_params, lr=policy_lr)
+        self.cont_optim = optim.Adam(cont_shared_params + cont_policy_params + cont_value_params, lr=policy_lr)
 
     def imitation_train_policy(self, obs, actions):
+
         for _ in range(self.max_policy_train_iters):
             logits_dict, _ = self.ac(obs)
 
+            # logits
             inv_act_logits = logits_dict['inv_act']
-
             movement_logits = logits_dict["movement"]
+            side_move_logits = logits_dict["side_movement"]
             item_logits = logits_dict["item_use"]
             hotbar_logits = logits_dict["hotbar"]
             pan_logits = logits_dict["pan_camera"]
@@ -51,94 +62,235 @@ class PPOTrainer():
             to_slot_logits = logits_dict["to_slot"]
 
             drop_slot_logits = logits_dict["drop_slot"]
-            drop_all_flag_logits = logits_dict["drop_all_flag"]
+            drop_all_logits = logits_dict["drop_all_flag"]
 
-            craft_item_id_logist = logits_dict["craft_item_id"]
+            craft_logits = logits_dict["craft_item_id"]
 
-            inv_act_target = actions[:, 0]
+            # targets
+            inv_act_t = actions[:, 0].long()
 
-            movement_targets = actions[:, 1]
-            item_targets = actions[:, 2]
-            hotbar_targets = actions[:, 3]
-            pan_targets = actions[:, 4]
+            movement_t = actions[:, 1].long()
+            side_move_t = actions[:, 2].long()
+            item_t = actions[:, 3].long()
+            hotbar_t = actions[:, 4].long()
+            pan_t = actions[:, 5].long()
 
-            from_slot_targets = actions[:, 5]
-            to_slot_targets = actions[:, 6]
+            from_slot_t = actions[:, 6].long()
+            to_slot_t = actions[:, 7].long()
 
-            drop_slot_targets = actions[:, 7]
-            drop_all_flag_targets = actions[:, 8]
+            drop_slot_t = actions[:, 8].long()
+            drop_all_t = actions[:, 9].float()
 
-            craft_item_id_targets = actions[:, 9]
+            craft_t = actions[:, 10].long()
 
-            loss = (
-                    nn.CrossEntropyLoss()(movement_logits, movement_targets) +
-                    nn.CrossEntropyLoss()(item_logits, item_targets) +
-                    nn.CrossEntropyLoss()(hotbar_logits, hotbar_targets) +
-                    nn.CrossEntropyLoss()(pan_logits, pan_targets)
-            )
+            # masks by inv_act
+            is_move = (inv_act_t == 0)
+            is_swap = (inv_act_t == 1)
+            is_drop = (inv_act_t == 2)
+            is_craft = (inv_act_t == 3)
+
+            loss = 0.0
+
+            # inv action always trained
+            loss += nn.CrossEntropyLoss()(inv_act_logits, inv_act_t)
+
+            # move
+            if is_move.any():
+                loss += nn.CrossEntropyLoss()(movement_logits[is_move], movement_t[is_move])
+                loss += nn.CrossEntropyLoss()(side_move_logits[is_move], side_move_t[is_move])
+                loss += nn.CrossEntropyLoss()(item_logits[is_move], item_t[is_move])
+                loss += nn.CrossEntropyLoss()(hotbar_logits[is_move], hotbar_t[is_move])
+                loss += nn.CrossEntropyLoss()(pan_logits[is_move], pan_t[is_move])
+
+            # swap
+            if is_swap.any():
+                loss += nn.CrossEntropyLoss()(from_slot_logits[is_swap], from_slot_t[is_swap])
+                loss += nn.CrossEntropyLoss()(to_slot_logits[is_swap], to_slot_t[is_swap])
+
+            # drop
+            if is_drop.any():
+                loss += nn.CrossEntropyLoss()(drop_slot_logits[is_drop], drop_slot_t[is_drop])
+                loss += nn.BCEWithLogitsLoss()(drop_all_logits[is_drop].squeeze(-1), drop_all_t[is_drop])
+
+            # craft
+            if is_craft.any():
+                loss += nn.CrossEntropyLoss()(craft_logits[is_craft], craft_t[is_craft])
 
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
-    def test_accuracy(self, state, actions, batch_size=2048):
-        self.ac.eval()
+    def imitation_train_policy_cont(self, obs, actions):
 
-        total_correct = 0
-        total_samples = 0
+        for _ in range(self.max_policy_train_iters):
+            logits_dict, _ = self.cont_model(obs)
 
-        total_move_correct = 0
-        total_item_correct = 0
-        total_hotbar_correct = 0
-        total_pan_correct = 0
+            close_logits = logits_dict["close_container"].squeeze(-1)
+            cont_logits = logits_dict["container_slot"]
+            inv_logits = logits_dict["inventory_slot"]
+
+            inv_slot_t = actions[:, 0].long()
+            cont_slot_t = actions[:, 1].long()
+            close_t = actions[:, 2].float()
+
+            loss = (
+                    nn.CrossEntropyLoss()(inv_logits, inv_slot_t) +
+                    nn.CrossEntropyLoss()(cont_logits, cont_slot_t) +
+                    nn.BCEWithLogitsLoss()(close_logits, close_t)
+            )
+
+            self.cont_optim.zero_grad()
+            loss.backward()
+            self.cont_optim.step()
+
+    def test_accuracy(self, obs, actions, world_policy_bool, batch_size=2048):
+        if world_policy_bool:
+            self.ac.eval()
+
+            total = 0
+            correct_all = 0
+
+            # per-head stats
+            stats = {
+                "inv_act": [0, 0],
+                "move": [0, 0],
+                "swap": [0, 0],
+                "drop": [0, 0],
+                "craft": [0, 0],
+            }
+
+            with (torch.no_grad()):
+                for i in range(0, len(actions), batch_size):
+                    batch_obs = {k: v[i:i + batch_size] for k, v in obs.items()}
+                    batch_act = actions[i:i + batch_size]
+
+                    logits = self.ac.policy(batch_obs)
+
+                    inv_act_t = batch_act[:, 0].long()
+                    inv_act_p = logits["inv_act"].argmax(dim=1)
+
+                    total += len(batch_act)
+                    stats["inv_act"][1] += len(batch_act)
+                    stats["inv_act"][0] += (inv_act_p == inv_act_t).sum().item()
+
+                    all_ok = (inv_act_p == inv_act_t)
+
+                    # MOVE
+                    mask = inv_act_t == 0
+                    if mask.any():
+                        move_ok = (
+                                          logits["movement"][mask].argmax(1) == batch_act[mask, 1]
+                                  ) & (
+                                        logits["side_movement"][mask].argmax(1) == batch_act[mask, 2]
+                                  ) & (
+                                          logits["item_use"][mask].argmax(1) == batch_act[mask, 3]
+                                  ) & (
+                                          logits["hotbar"][mask].argmax(1) == batch_act[mask, 4]
+                                  ) & (
+                                          logits["pan_camera"][mask].argmax(1) == batch_act[mask, 5]
+                                  )
+
+                        stats["move"][1] += mask.sum().item()
+                        stats["move"][0] += move_ok.sum().item()
+                        all_ok[mask] &= move_ok
+
+                    # SWAP
+                    mask = inv_act_t == 1
+                    if mask.any():
+                        swap_ok = (
+                                          logits["from_slot"][mask].argmax(1) == batch_act[mask, 6]
+                                  ) & (
+                                          logits["to_slot"][mask].argmax(1) == batch_act[mask, 7]
+                                  )
+
+                        stats["swap"][1] += mask.sum().item()
+                        stats["swap"][0] += swap_ok.sum().item()
+                        all_ok[mask] &= swap_ok
+
+                    # DROP
+                    mask = inv_act_t == 2
+                    if mask.any():
+                        drop_ok = (
+                                          logits["drop_slot"][mask].argmax(1) == batch_act[mask, 8]
+                                  ) & (
+                                          (logits["drop_all_flag"][mask].squeeze(-1) > 0) == (batch_act[mask, 9] > 0.5)
+                                  )
+
+                        stats["drop"][1] += mask.sum().item()
+                        stats["drop"][0] += drop_ok.sum().item()
+                        all_ok[mask] &= drop_ok
+
+                    # CRAFT
+                    mask = inv_act_t == 3
+                    if mask.any():
+                        craft_ok = (
+                                logits["craft_item_id"][mask].argmax(1) == batch_act[mask, 10]
+                        )
+
+                        stats["craft"][1] += mask.sum().item()
+                        stats["craft"][0] += craft_ok.sum().item()
+                        all_ok[mask] &= craft_ok
+
+                    correct_all += all_ok.sum().item()
+
+            print("=== WORLD POLICY ACCURACY ===")
+            for k, (c, n) in stats.items():
+                if n > 0:
+                    print(f"{k:10s}: {c / n:.3f}")
+            print(f"ALL ACTIONS: {correct_all / total:.3f}")
+
+            self.ac.train()
+            return correct_all / total
+        else:
+            if actions.size(1) != 3:
+                raise ValueError(
+                    f"Container policy expects action dim = 3, got {actions.shape}"
+                )
+
+        self.cont_model.eval()
+
+        total = 0
+        inv_correct = 0
+        cont_correct = 0
+        close_correct = 0
+        all_correct = 0
 
         with torch.no_grad():
-            for i in range(0, len(state), batch_size):
-                batch_obs = {k: v[i:i+batch_size] for k, v in state.items()}
-                batch_actions = actions[i:i + batch_size]
+            for i in range(0, len(actions), batch_size):
+                batch_obs = {k: v[i:i + batch_size] for k, v in obs.items()}
+                batch_act = actions[i:i + batch_size]
 
-                logits = self.ac.policy(batch_obs)
+                logits, _ = self.cont_model(batch_obs)
 
-                pred_move = logits['movement'].argmax(dim=1)
-                pred_item = logits['item_use'].argmax(dim=1)
-                pred_hotbar = logits['hotbar'].argmax(dim=1)
-                pred_pan = logits['pan_camera'].argmax(dim=1)
+                inv_pred = logits["inventory_slot"].argmax(dim=1)
+                cont_pred = logits["container_slot"].argmax(dim=1)
+                close_pred = (logits["close_container"].squeeze(-1) > 0)
 
-                true_move = batch_actions[:, 0]
-                true_item = batch_actions[:, 1]
-                true_hotbar = batch_actions[:, 2]
-                true_pan = batch_actions[:, 3]
+                inv_t = batch_act[:, 0].long()
+                cont_t = batch_act[:, 1].long()
+                close_t = batch_act[:, 2] > 0.5
 
-                total_move_correct += (pred_move == true_move).sum().item()
-                total_item_correct += (pred_item == true_item).sum().item()
-                total_hotbar_correct += (pred_hotbar == true_hotbar).sum().item()
-                total_pan_correct += (pred_pan == true_pan).sum().item()
+                inv_ok = inv_pred == inv_t
+                cont_ok = cont_pred == cont_t
+                close_ok = close_pred == close_t
 
-                all_correct = (
-                        (pred_move == true_move)
-                        & (pred_item == true_item)
-                        & (pred_hotbar == true_hotbar)
-                        & (pred_pan == true_pan)
-                )
-                total_correct += all_correct.sum().item()
-                total_samples += len(batch_actions)
+                all_ok = inv_ok & cont_ok & close_ok
 
-        move_acc = total_move_correct / total_samples
-        item_acc = total_item_correct / total_samples
-        hotbar_acc = total_hotbar_correct / total_samples
-        pan_acc = total_pan_correct / total_samples
+                inv_correct += inv_ok.sum().item()
+                cont_correct += cont_ok.sum().item()
+                close_correct += close_ok.sum().item()
+                all_correct += all_ok.sum().item()
 
-        total_acc = total_correct / total_samples
+                total += len(batch_act)
 
-        print(f"Acc Movement   : {move_acc:.3f}")
-        print(f"Acc Item Use   : {item_acc:.3f}")
-        print(f"Acc Hotbar     : {hotbar_acc:.3f}")
-        print(f"Acc Pan Camera : {pan_acc:.3f}")
-        print(f"Acc ALL ACTIONS: {total_acc:.3f}")
+        print("=== CONTAINER POLICY ACCURACY ===")
+        print(f"Inventory slot : {inv_correct / total:.3f}")
+        print(f"Container slot : {cont_correct / total:.3f}")
+        print(f"Close flag     : {close_correct / total:.3f}")
+        print(f"ALL ACTIONS    : {all_correct / total:.3f}")
 
-        self.ac.train()
-
-        return total_acc
+        self.cont_model.train()
+        return all_correct / total
 
 
     def train_policy(self, obs, act, old_log_probs, summed_old_log_probs, advantages, returns):
@@ -163,6 +315,7 @@ class PPOTrainer():
                     'inv_act'   : act['inv_act'][i:i+batch_size],
 
                     'movement'  : act['movement'][i:i+batch_size],
+                    'side_movement': act['side_movement'][i:i+batch_size],
                     'item_use'  : act['item_use'][i:i+batch_size],
                     'hotbar'    : act['hotbar'][i:i+batch_size],
                     'pan_cam'   : act['pan_cam'][i:i+batch_size],
@@ -192,6 +345,7 @@ class PPOTrainer():
                 inv_act_dist = Categorical(logits=logits_dict['inv_act'])
 
                 movement_dist = Categorical(logits=logits_dict['movement'])
+                side_move_dist = Categorical(logits=logits_dict['side_movement'])
                 item_use_dist = Categorical(logits=logits_dict['item_use'])
                 hotbar_dist = Categorical(logits=logits_dict['hotbar'])
                 pan_cam_dist =  Categorical(logits=logits_dict['pan_camera'])
@@ -208,6 +362,7 @@ class PPOTrainer():
                 inv_act = batch_act['inv_act']
 
                 movement_act = batch_act['movement']
+                side_move_act = batch_act['side_movement']
                 item_use_act = batch_act['item_use']
                 hotbar_act = batch_act['hotbar']
                 pan_cam_act = batch_act['pan_cam']
@@ -225,6 +380,7 @@ class PPOTrainer():
 
                 move_lp = (
                         movement_dist.log_prob(movement_act)
+                        + side_move_dist.log_prob(side_move_act)
                         + item_use_dist.log_prob(item_use_act)
                         + hotbar_dist.log_prob(hotbar_act)
                         + pan_cam_dist.log_prob(pan_cam_act)
@@ -259,11 +415,11 @@ class PPOTrainer():
 
                 approx_kl = 0.5 * ((new_log_probs - batch_summed_old_log_probs) ** 2).mean()
 
-                # ignore for now, may change later so easier to change
                 entropy_bonus = (
                         inv_act_dist.entropy()
                         + is_move * (
                                 movement_dist.entropy()
+                                + side_move_dist.entropy()
                                 + item_use_dist.entropy()
                                 + hotbar_dist.entropy()
                                 + pan_cam_dist.entropy()
@@ -277,7 +433,7 @@ class PPOTrainer():
                                 + drop_all_flag_dist.entropy()
                         )
                         + is_craft * craft_item_id_dist.entropy()
-                ).mean() * 0.07
+                ).mean() * 0.15
 
                 policy_ratio = torch.exp(new_log_probs - batch_summed_old_log_probs)
                 clipped_ratio = policy_ratio.clamp(1 - self.ppo_clip_val, 1 + self.ppo_clip_val)

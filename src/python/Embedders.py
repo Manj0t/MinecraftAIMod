@@ -1,39 +1,38 @@
 import torch
 import torch.nn as nn
 
-class ItemEmbedder(nn.Module):
-    # each item is represented as [item_id, isArmor, isFood, isTool, isWeapon, utility1, utility2, count, durability]
-    # Input (batch_size, 41, 9)
 
+class ItemEmbedder(nn.Module):
     def __init__(self, num_items):
         super().__init__()
-        self.id_embedding = nn.Embedding(num_items, 32)
+        self.id_embedding = nn.Embedding(num_items, 64)
 
         self.scalar_mlp = nn.Sequential(
-            nn.Linear(6, 32),
+            nn.Linear(7, 64),
             nn.ReLU(),
-            nn.Linear(32, 16),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 32),
         )
 
-        # self.fuse = nn.Linear(64 + 16, 64)
-        #
-        # self.output = nn.Linear(64 + 2, 64)
-
         self.final = nn.Sequential(
-            nn.Linear(32 + 16 + 2, 32),
+            nn.Linear(64 + 32 + 2, 128),
             nn.ReLU(),
-            nn.LayerNorm(32),
+            nn.LayerNorm(128),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),  # Final output
         )
 
     def forward(self, item_info):
+        # print(item_info)
         id = item_info[..., 0].long()
-        scalar = item_info[..., 1:7].float()
-        count_and_durability = item_info[..., 7:].float()
+        scalar = item_info[..., 1:8].float()
+        count_and_durability = item_info[..., 8:].float()
 
         id_embedding = self.id_embedding(id)
         scalar_vec = self.scalar_mlp(scalar)
 
-        # old comment (batch_size, 41, 66)
         combined = torch.cat((id_embedding, scalar_vec, count_and_durability), dim=-1)
 
         return self.final(combined)
@@ -41,13 +40,12 @@ class ItemEmbedder(nn.Module):
 
 class BlockEmbedder(nn.Module):
     # [Block id, x, y, z]
-    # Input: (batch_size, idk, 4)
 
     def __init__(self, num_blocks):
         super().__init__()
-        self.block_embedding = nn.Embedding(num_blocks, 32)
+        self.block_embedding = nn.Embedding(num_blocks, 64)
 
-    def forward(self, block_info):
+    def forward(self, block_info, look_emb=False):
         # block_ids: (D, H, W) OR (batch, D, H, W)
 
         if block_info.dim() == 3:
@@ -57,28 +55,32 @@ class BlockEmbedder(nn.Module):
         block_embedding = self.block_embedding(block_info)
 
         # (B, C, D, H, W)
-        block_embedding = block_embedding.permute(0, 4, 1, 2, 3)
+        if not look_emb:
+            block_embedding = block_embedding.permute(0, 4, 1, 2, 3)
 
         return block_embedding
 
 
 class EntityEmbedder(nn.Module):
-    # [entity id, isMonster, isAngerable, isPassive, isUnknown, x, y, z]
-    # Input: (batch_size, 10, 8)
     def __init__(self, num_entities):
         super().__init__()
-        self.entity_embedding = nn.Embedding(num_entities, 32)
+        self.entity_embedding = nn.Embedding(num_entities, 64)
 
         self.scalar_mlp = nn.Sequential(
-            nn.Linear(4, 32),
+            nn.Linear(4, 64),
             nn.ReLU(),
-            nn.Linear(32, 16),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 32),
         )
 
         self.final = nn.Sequential(
-            nn.Linear(32 + 16 + 3, 32),
+            nn.Linear(64 + 32 + 3, 128),
             nn.ReLU(),
-            nn.LayerNorm(32),
+            nn.LayerNorm(128),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
         )
 
     def forward(self, entity_info):
@@ -89,7 +91,5 @@ class EntityEmbedder(nn.Module):
         entity_embedding = self.entity_embedding(id)
         scalar_vec = self.scalar_mlp(scalar)
         combined = torch.cat((entity_embedding, scalar_vec, entity_pos), dim=-1)
-
-        # (batch_size, 10, 67)
 
         return self.final(combined)

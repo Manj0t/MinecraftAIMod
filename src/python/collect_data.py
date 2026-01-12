@@ -9,8 +9,21 @@ import torch
 import os
 import numpy as np
 import sys
+import threading
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+COLLECT = True
+def start_collection_thread():
+    threading.Thread(target=debug_input_listener, daemon=True).start()
+
+def debug_input_listener():
+    global COLLECT
+    print("-> Data Collection Listener listening... Enter 's' to stop collection.")
+    while True:
+        user_input = sys.stdin.readline().strip()
+        if user_input.lower() == "s":
+            COLLECT = False
 
 HOST = '127.0.0.1'
 
@@ -23,17 +36,20 @@ sock.connect((HOST, PORT))
 set_conn([sock], 1)
 print(f"Connected to env on port {PORT}")
 
-data = []
-utils.prevActions = torch.zeros(1, 4, dtype=torch.float32).to(DEVICE)
+worldData = []
+contData = []
+utils.prevActions = torch.zeros(1, 11, dtype=torch.float32).to(DEVICE)
 i = 0
-while True:
+
+start_collection_thread()
+
+while COLLECT:
     prev_act_copy = utils.prevActions.clone()
 
     obs = get_state() # Dictionary of tensors
     obs['PrevActions'] = prev_act_copy
 
     obs_np = {k: (v.cpu().numpy() if isinstance(v, torch.Tensor) else v) for k, v in obs.items()}
-    print(obs_np)
     sock.sendall(struct.pack(">i", 1))  # Let java know to continue and python is ready
 
     size_bytes = sock.recv(4)
@@ -56,31 +72,36 @@ while True:
     action.ParseFromString(buffer)
 
     expertAction = list(action.actions)
-    if not is_action_noOp(expertAction):
+    if not is_action_noOp(expertAction, utils.prevActions):
 
         action_t = torch.tensor(expertAction, dtype=torch.float32).to(DEVICE)
+        if len(action_t) == 3:
+            print('cont action')
+            contData.append({
+                "obs" : obs_np,
+                "action" : action_t.cpu().numpy(),
+            })
+        else:
+            worldData.append({
+                "obs" : obs_np,
+                "action" : action_t.cpu().numpy(),
+            })
 
-        data.append({
-            "obs" : obs_np,
-            "action" : action_t.cpu().numpy(),
-        })
-
+            utils.prevActions = action_t.unsqueeze(0)
         print(expertAction)
-
-        utils.prevActions = action_t.unsqueeze(0)
-
         i += 1
     if i % 500 == 0:
-        print(f"Iteration {i} collected {len(data)} samples")
-    if i >= 2048:
-        continue_collection = input("Continue? (y/n): ")
-        if continue_collection == 'y':
-            i = 0
-        else:
-            sock.sendall(struct.pack(">i", 0))
-            break
+        print(f"Iteration {i} collected {len(worldData)} samples")
+    # if i >= 2048:
+    #     continue_collection = input("Continue? (y/n): ")
+    #     if continue_collection == 'y':
+    #         i = 0
+    #     else:
+    #         sock.sendall(struct.pack(">i", 0))
+    #         break
     sock.sendall(struct.pack(">i", 1))
 
 
 print("SAVED DATA")
-torch.save(data, "expert_data4.pt")
+torch.save(worldData, "world_expert_data10.pt")
+torch.save(contData, "cont_expert_data7.pt")

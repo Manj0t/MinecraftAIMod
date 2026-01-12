@@ -104,4 +104,21 @@ public interface StateOrBuilder extends
    * @return The containerType.
    */
   double getContainerType();
+
+  /**
+   * <code>repeated double containerMask = 8;</code>
+   * @return A list containing the containerMask.
+   */
+  java.util.List<java.lang.Double> getContainerMaskList();
+  /**
+   * <code>repeated double containerMask = 8;</code>
+   * @return The count of containerMask.
+   */
+  int getContainerMaskCount();
+  /**
+   * <code>repeated double containerMask = 8;</code>
+   * @param index The index of the element to return.
+   * @return The containerMask at the given index.
+   */
+  double getContainerMask(int index);
 }

@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 from Embedders import ItemEmbedder, BlockEmbedder, EntityEmbedder
-from Transformers import MinecraftTransformer
 from BlockCNN import BlockCNN
 from ItemDropsCNN import ItemDropsCNN
 
@@ -15,51 +14,73 @@ class ActorCriticNetwork(nn.Module):
         self.block_embedder = BlockEmbedder(num_blocks)
         self.entity_embedder = EntityEmbedder(num_entities)
 
-        self.embed_dim = 32
+        self.embed_dim = 64
+        self.shared_out = 256
 
         #  * ( (5 * 2) + 1) * ( (3 * 2) + 1) * ( (5 * 2) + 1 )
         # self.block_transformer = MinecraftTransformer(self.embed_dim)
         self.block_cnn = BlockCNN(self.embed_dim)
         self.nearby_item_drops_cnn = ItemDropsCNN(self.embed_dim)
 
-        obs_space_size = ((agent_info_dim + 0)
+        obs_space_size = ((agent_info_dim + 1)
                           + 41 * self.embed_dim     # inventory
-                          + 4096                    # Nearby Blocks
+                          + 2048                    # Nearby Blocks
                           + 2048                    # Nearby Item Drops
                           + 10 * self.embed_dim     # Nearby Entities
-                          + 10)                      # +10 for prviouse actions
+                          + self.embed_dim
+                          + 11)                      # +10 for prviouse actions
         # obs_space_size = (agent_info_dim + 0) + 4096 + 4
 
         self.shared_layers = nn.Sequential(
-            nn.Linear(obs_space_size, 256),
+            # Gradual compression instead of brutal 15x drop
+            nn.Linear(obs_space_size, 2048),  # ← ADD THIS (only 7.5x compression)
             nn.ReLU(),
-            nn.Linear(256, 256),
+            nn.Dropout(0.1),
+
+            nn.Linear(2048, 1024),  # ← Now only 2x compression
             nn.ReLU(),
-            nn.Linear(256, 128),
+            nn.Dropout(0.1),
+
+            nn.Linear(1024, 512),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+
+            nn.Linear(512, 512),
+            nn.ReLU(),
+
+            nn.Linear(512, 256),
             nn.ReLU(),
         )
 
-        self.inv_action_type = nn.Linear(128, 4)    # No inventory action 0, swap items 1, drop item 2, craft item 3
-                                                    #    0   ,   1     ,  2  ,  3   ,       4     ,  5  ,  6
-        self.movement_policy = nn.Linear(128, 7)    # forward, backward, left, right, forward jump, jump, none
-        self.item_use_policy = nn.Linear(128, 3)    # Left click (attack)0 , right click (use item)1 , neither2
-        self.hotbar_policy = nn.Linear(128, 9)      # Active hotbar slot
-        self.pan_camera = nn.Linear(128, 5)         # Pan camera up 0, down 1, left 2, right 3
+        self.inv_action_type = nn.Linear(self.shared_out, 4)    # No inventory action 0, swap items 1, drop item 2, craft item 3
+        self.movement_policy = nn.Linear(self.shared_out, 5)    # 0 forward, 1 backward, 2 forward jump, 3 jump, 4 none
+        self.move_side_policy = nn.Linear(self.shared_out, 3)   # left, right, none
+        self.item_use_policy = nn.Linear(self.shared_out, 3)    # Left click (attack)0 , right click (use item)1 , neither2
+        self.hotbar_policy = nn.Linear(self.shared_out, 9)      # Active hotbar slot
+        self.pan_camera = nn.Linear(self.shared_out, 5)         # Pan camera up 0, down 1, left 2, right 3
 
         # self.swap_flag = nn.Linear(128, 1)          # 0 no swap, 1 swap. If 0 ignores from and to slot
-        self.from_slot = nn.Linear(128, 41)         # 41 possible slots to pick from
-        self.to_slot = nn.Linear(128, 41)           # 41 possible slots to pick from
+        self.from_slot = nn.Linear(self.shared_out, 41)         # 41 possible slots to pick from
+        self.to_slot = nn.Linear(self.shared_out, 41)           # 41 possible slots to pick from
 
         # self.drop_flag = nn.Linear(128, 1)          # 0 no drop, 1 do drop. If 0 ignores drop_slot and drop_all
-        self.drop_slot = nn.Linear(128, 41)         # 41 possible slots to pick to drop
-        self.drop_all = nn.Linear(128, 1)           # 0 drop one, 1 drop all
+        self.drop_slot = nn.Linear(self.shared_out, 41)         # 41 possible slots to pick to drop
+        self.drop_all = nn.Linear(self.shared_out, 1)           # 0 drop one, 1 drop all
 
         # self.craft_flag = nn.Linear(128, 1)         # 0 no craft, 1 do craft. If 0 ignores craft_item_id
-        self.craft_item_id = nn.Linear(128, num_items)  # Many items to choose from to craft. Item crafting will hopefully be learned
+        self.craft_item_id = nn.Linear(self.shared_out, num_items)  # Many items to choose from to craft. Item crafting will hopefully be learned
 
         self.value_layer = nn.Sequential(
+            nn.Linear(256, 256),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+
+            nn.Linear(256, 128),
+            nn.ReLU(),
+
             nn.Linear(128, 64),
             nn.ReLU(),
+
             nn.Linear(64, 1)
         )
 
@@ -81,20 +102,20 @@ class ActorCriticNetwork(nn.Module):
         agent_info = agent_info[:, :-9]
 
         look_type = look_slice[:, 0].long()
-        looking_at_info = look_slice[:, 1:]
+        looking_at_info = look_slice[:, 1:].long()
 
+        look_embeds = []
+        for b in range(agent_info.size(0)):
+            type = int(look_type[b].item())
+            if type == 0:
+                look_embeds.append(torch.zeros(self.embed_dim, device=DEVICE))
+            elif type == 1:
+                # print("F ", looking_at_info[b:b+1, 0])
+                look_embeds.append(self.block_embedder(looking_at_info[b:b+1, 0], look_emb=True).squeeze(0))
+            else:
+                look_embeds.append(self.entity_embedder(looking_at_info[b:b+1]).squeeze(0))
 
-        # look_embeds = []
-        # for b in range(agent_info.size(0)):
-        #     type = int(look_type[b].item())
-        #     if type == 0:
-        #         look_embeds.append(torch.zeros(self.embed_dim, device=DEVICE))
-        #     elif type == 1:
-        #         look_embeds.append(self.block_embedder(looking_at_info[b:b+1, 0]).squeeze(0))
-        #     else:
-        #         look_embeds.append(self.entity_embedder(looking_at_info[b:b+1]).squeeze(0))
-        #
-        # look_embeds = torch.stack(look_embeds, dim=0)
+        look_embeds = torch.stack(look_embeds, dim=0)
 
         if len(item_embedding.shape) == 2:
             item_embedding = item_embedding.unsqueeze(0)
@@ -102,7 +123,7 @@ class ActorCriticNetwork(nn.Module):
             block_embedding = block_embedding.unsqueeze(0)
         if len(entity_embedding.shape) == 2:
             entity_embedding = entity_embedding.unsqueeze(0)
-        if len(nearby_items.shape) == 4: # Maybe? Little confused. Just trying to follow my previous patterns
+        if len(nearby_items.shape) == 4:
             nearby_items = nearby_items.unsqueeze(0)
 
         item_x = torch.flatten(item_embedding, start_dim=1)
@@ -113,22 +134,14 @@ class ActorCriticNetwork(nn.Module):
         nearby_item_drop_embedding = nearby_item_drop_embedding.permute(0, 4, 1, 2, 3)
         item_drops_x = self.nearby_item_drops_cnn(nearby_item_drop_embedding)
 
-        # print("agent_info:", agent_info.shape)
-        # print("item_x:", item_x.shape)
-        # print("block_x:", block_x.shape)
-        # print("entity_x:", entity_x.shape)
-        # print("item_drops_x:", item_drops_x.shape)
-        # print("prevActions:", prevActions.shape)
-
-        return torch.cat([agent_info, item_x, block_x, entity_x, item_drops_x, prevActions], dim=-1)
-        # return torch.cat([agent_info, block_x, prevActions], dim=-1)
-
+        return torch.cat([agent_info, item_x, block_x, entity_x, item_drops_x, look_embeds, prevActions], dim=-1)
 
 
     def get_policy_logits(self, x):
         inv_act_logits = self.inv_action_type(x)
 
         movement_policy_logits = self.movement_policy(x)
+        side_movement_policy_logits = self.move_side_policy(x)
         item_use_policy_logits = self.item_use_policy(x)
         hotbar_policy_logits = self.hotbar_policy(x)
         pan_camera_logits = self.pan_camera(x)
@@ -144,6 +157,7 @@ class ActorCriticNetwork(nn.Module):
         policy_logits = {
             'inv_act' : inv_act_logits,
             'movement': movement_policy_logits,
+            'side_movement' : side_movement_policy_logits,
             'item_use': item_use_policy_logits,
             'hotbar': hotbar_policy_logits,
             'pan_camera' : pan_camera_logits,
@@ -175,7 +189,7 @@ class ActorCriticNetwork(nn.Module):
     def forward(self, obs):
         n_obs = self.obs_preprocessing(obs)
         if torch.isnan(n_obs).any() or torch.isinf(n_obs).any():
-            print("❌ NaN or Inf detected in observation BEFORE network")
+            print(" NaN or Inf detected in observation BEFORE network")
 
         x = self.shared_layers(n_obs)
 
@@ -186,7 +200,7 @@ class ActorCriticNetwork(nn.Module):
 
     def debug_tensor(self, name, t):
         if torch.isnan(t).any() or torch.isinf(t).any():
-            print(f"❌ NaN or Inf detected in {name}")
+            print(f" NaN or Inf detected in {name}")
             print("   min:", torch.nanmin(t))
             print("   max:", torch.nanmax(t))
             print("   values:", t)

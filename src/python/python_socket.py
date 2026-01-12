@@ -5,6 +5,7 @@ from PPOTrainer import PPOTrainer
 from utils import set_conn, rollout, print_cuda_mem, plot_rewards, test_rollout
 import state_pb2
 from ActorCritic import *
+from ContainerModel import *
 import torch
 import os
 import numpy as np
@@ -63,28 +64,23 @@ print(f'agent_info_dim: {agent_info_dim}, num_items: {num_items}, num_blocks: {n
 
 set_conn(env_sockets, num_envs)
 
-model = ActorCriticNetwork(agent_info_dim, num_items, num_blocks, num_entities)
-model.to(DEVICE)
+world_model = ActorCriticNetwork(agent_info_dim, num_items, num_blocks, num_entities)
+world_model.to(DEVICE)
 
-ppo = PPOTrainer(model)
+container_model = ContainerModel(agent_info_dim, num_items, num_entities)
+container_model.to(DEVICE)
 
-# load_path = "models/iter_saves/continuing_25.pth"
-load_path = "imitate/model_0NO.849609375_epoch_240.pth"
-# Saved_State_1131
-# .35.pth
+ppo = PPOTrainer(world_model, container_model)
+
+load_path = "imitate/model.pth"
 iteration = 0
 curr_best = float('-inf')
 if os.path.exists(load_path):
     print(f"<(-_-)> Loading checkpoint: {load_path}")
     checkpoint = torch.load(load_path, map_location=DEVICE, weights_only=False)
 
-    model_dict = model.state_dict()
-    pretrained_dict = checkpoint["model_state_dict"]
-    # curr_best = checkpoint["best_reward"]
-    #
-    # ep_rewards = checkpoint["rewards"]
-    # iteration = checkpoint["iter"]
-    # print(f'Best reward {checkpoint["best_reward"]}')
+    model_dict = world_model.state_dict()
+    pretrained_dict = checkpoint["world_model"]
 
     filtered_dict = {}
 
@@ -106,10 +102,11 @@ if os.path.exists(load_path):
 
 
     print("-> Loaded:", filtered_dict.keys())
-    print("/\ Skipped:", skipped_keys)
+    print("- Skipped:", skipped_keys)
 
     model_dict.update(filtered_dict)
-    model.load_state_dict(model_dict, strict=False)
+    world_model.load_state_dict(model_dict, strict=False)
+    # container_model.load_state_dict(checkpoint["cont_model"])
 
     if "optimizer_state_dict" in checkpoint:
         try:
@@ -129,7 +126,7 @@ if os.path.exists(load_path):
     print(f"> Loaded model! Best reward: {curr_best}")
 
 else:
-    print("/\ No checkpoint found, training from scratch")
+    print("- No checkpoint found, training from scratch")
 
 
 start_debugging()
@@ -140,32 +137,32 @@ if test:
     while True:
         for s in env_sockets:
             s.sendall(struct.pack(">i", 1))
-        test_rollout(model)
+        test_rollout(world_model)
 
 for i in range(iteration, 10000):
     print("Loop ", i)
     for s in env_sockets:
         s.sendall(struct.pack(">i", 1))
     print_cuda_mem("Before Rollout")
-    train_data, ep_reward = rollout(model, ppo, ep_rewards, i, curr_best)
+    train_data, cont_train_data, ep_reward = rollout(world_model, container_model, ppo, ep_rewards, i, curr_best)
     ep_rewards.append(np.mean(ep_reward))
     print_cuda_mem("After Rollout")
 
     if ep_rewards[-1] >= curr_best or i % 5 == 0:
         if ep_rewards[-1] >= curr_best:
             curr_best = ep_rewards[-1]
-            save_path = f"models/model_best_now_attacks{curr_best:.2f}_iter{i}.pth"
+            save_path = f"models/model_best_larger_model{curr_best:.2f}_iter{i}.pth"
         else:
-            save_path = f"models/iter_saves/model_itr_{i}.pth"
+            save_path = f"models/iter_saves/model_itr_larger_model{i}.pth"
         torch.save({
-            "model_state_dict": model.state_dict(),
+            "model_state_dict": world_model.state_dict(),
             "optimizer_state_dict": ppo.optimizer.state_dict(),
             "rewards": ep_rewards,
             "best_reward": curr_best,
             "iter": i,
         }, save_path)
 
-        print(f" ✅ Saved best model → {save_path} with reward {curr_best}")
+        print(f" Saved best model → {save_path} with reward {curr_best}")
 
     plot_rewards(ep_rewards, path=f'model_{i}', window=1)
 
@@ -180,14 +177,18 @@ for i in range(iteration, 10000):
         'Entities': torch.tensor(flat(train_data['EntitiesObs'])[permute_idxs], dtype=torch.float32, device=DEVICE),
         'NearbyItemDrops': torch.tensor(flat(train_data['NearbyItemDropsObs'])[permute_idxs], dtype=torch.float32, device=DEVICE),
         'AgentInfo': torch.tensor(flat(train_data['AgentInfoObs'])[permute_idxs], dtype=torch.float32, device=DEVICE),
-        'PrevActions': torch.tensor(flat(train_data['PrevActionsObs'])[permute_idxs], dtype=torch.float32,
-                                    device=DEVICE),
+        'PrevActions': torch.tensor(flat(train_data['PrevActionsObs'])[permute_idxs], dtype=torch.float32, device=DEVICE),
+
     }
+    #         'ContainerType': torch.tensor(flat(train_data['ContainerType'])[permute_idxs], dtype=torch.float32, device=DEVICE),
+    #         'Container': torch.tensor(flat(train_data['Container'])[permute_idxs], dtype=torch.float32, device=DEVICE),
+    #         'ContainerMask': torch.tensor(flat(train_data['Container'])[permute_idxs], dtype=torch.float32, device=DEVICE)
 
     act = {
         'inv_act': torch.tensor(flat(train_data['inv_act'])[permute_idxs], dtype=torch.int64, device=DEVICE),
 
         'movement': torch.tensor(flat(train_data['movement'])[permute_idxs], dtype=torch.int64, device=DEVICE),
+        'side_movement': torch.tensor(flat(train_data['side_movement'])[permute_idxs], dtype=torch.int64, device=DEVICE),
         'item_use': torch.tensor(flat(train_data['item_use'])[permute_idxs], dtype=torch.int64, device=DEVICE),
         'hotbar': torch.tensor(flat(train_data['hotbar'])[permute_idxs], dtype=torch.int64, device=DEVICE),
         'pan_cam': torch.tensor(flat(train_data['pan_cam'])[permute_idxs], dtype=torch.int64, device=DEVICE),

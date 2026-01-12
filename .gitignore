@@ -25,6 +25,9 @@ __pycache__/
 ### ML Models + Training Outputs ###
 src/python/models/
 src/python/graphs/
+src/python/imitate/
+src/python/cnn_debug/
+src/python/*.pt
 
 ### OS junk ###
 .DS_Store

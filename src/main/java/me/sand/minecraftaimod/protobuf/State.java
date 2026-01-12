@@ -17,6 +17,7 @@ private static final long serialVersionUID = 0L;
   }
   private State() {
     agentInfo_ = emptyDoubleList();
+    containerMask_ = emptyDoubleList();
   }
 
   @java.lang.Override
@@ -214,6 +215,35 @@ private static final long serialVersionUID = 0L;
     return containerType_;
   }
 
+  public static final int CONTAINERMASK_FIELD_NUMBER = 8;
+  @SuppressWarnings("serial")
+  private com.google.protobuf.Internal.DoubleList containerMask_;
+  /**
+   * <code>repeated double containerMask = 8;</code>
+   * @return A list containing the containerMask.
+   */
+  @java.lang.Override
+  public java.util.List<java.lang.Double>
+      getContainerMaskList() {
+    return containerMask_;
+  }
+  /**
+   * <code>repeated double containerMask = 8;</code>
+   * @return The count of containerMask.
+   */
+  public int getContainerMaskCount() {
+    return containerMask_.size();
+  }
+  /**
+   * <code>repeated double containerMask = 8;</code>
+   * @param index The index of the element to return.
+   * @return The containerMask at the given index.
+   */
+  public double getContainerMask(int index) {
+    return containerMask_.getDouble(index);
+  }
+  private int containerMaskMemoizedSerializedSize = -1;
+
   private byte memoizedIsInitialized = -1;
   @java.lang.Override
   public final boolean isInitialized() {
@@ -253,6 +283,13 @@ private static final long serialVersionUID = 0L;
     }
     if (java.lang.Double.doubleToRawLongBits(containerType_) != 0) {
       output.writeDouble(7, containerType_);
+    }
+    if (getContainerMaskList().size() > 0) {
+      output.writeUInt32NoTag(66);
+      output.writeUInt32NoTag(containerMaskMemoizedSerializedSize);
+    }
+    for (int i = 0; i < containerMask_.size(); i++) {
+      output.writeDoubleNoTag(containerMask_.getDouble(i));
     }
     getUnknownFields().writeTo(output);
   }
@@ -297,6 +334,17 @@ private static final long serialVersionUID = 0L;
     if (java.lang.Double.doubleToRawLongBits(containerType_) != 0) {
       size += com.google.protobuf.CodedOutputStream
         .computeDoubleSize(7, containerType_);
+    }
+    {
+      int dataSize = 0;
+      dataSize = 8 * getContainerMaskList().size();
+      size += dataSize;
+      if (!getContainerMaskList().isEmpty()) {
+        size += 1;
+        size += com.google.protobuf.CodedOutputStream
+            .computeInt32SizeNoTag(dataSize);
+      }
+      containerMaskMemoizedSerializedSize = dataSize;
     }
     size += getUnknownFields().getSerializedSize();
     memoizedSize = size;
@@ -343,6 +391,8 @@ private static final long serialVersionUID = 0L;
     if (java.lang.Double.doubleToLongBits(getContainerType())
         != java.lang.Double.doubleToLongBits(
             other.getContainerType())) return false;
+    if (!getContainerMaskList()
+        .equals(other.getContainerMaskList())) return false;
     if (!getUnknownFields().equals(other.getUnknownFields())) return false;
     return true;
   }
@@ -381,6 +431,10 @@ private static final long serialVersionUID = 0L;
     hash = (37 * hash) + CONTAINERTYPE_FIELD_NUMBER;
     hash = (53 * hash) + com.google.protobuf.Internal.hashLong(
         java.lang.Double.doubleToLongBits(getContainerType()));
+    if (getContainerMaskCount() > 0) {
+      hash = (37 * hash) + CONTAINERMASK_FIELD_NUMBER;
+      hash = (53 * hash) + getContainerMaskList().hashCode();
+    }
     hash = (29 * hash) + getUnknownFields().hashCode();
     memoizedHashCode = hash;
     return hash;
@@ -537,6 +591,7 @@ private static final long serialVersionUID = 0L;
         containerBuilder_ = null;
       }
       containerType_ = 0D;
+      containerMask_ = emptyDoubleList();
       return this;
     }
 
@@ -575,6 +630,11 @@ private static final long serialVersionUID = 0L;
         bitField0_ = (bitField0_ & ~0x00000001);
       }
       result.agentInfo_ = agentInfo_;
+      if (((bitField0_ & 0x00000080) != 0)) {
+        containerMask_.makeImmutable();
+        bitField0_ = (bitField0_ & ~0x00000080);
+      }
+      result.containerMask_ = containerMask_;
     }
 
     private void buildPartial0(me.sand.minecraftaimod.protobuf.State result) {
@@ -681,6 +741,16 @@ private static final long serialVersionUID = 0L;
       if (other.getContainerType() != 0D) {
         setContainerType(other.getContainerType());
       }
+      if (!other.containerMask_.isEmpty()) {
+        if (containerMask_.isEmpty()) {
+          containerMask_ = other.containerMask_;
+          bitField0_ = (bitField0_ & ~0x00000080);
+        } else {
+          ensureContainerMaskIsMutable();
+          containerMask_.addAll(other.containerMask_);
+        }
+        onChanged();
+      }
       this.mergeUnknownFields(other.getUnknownFields());
       onChanged();
       return this;
@@ -763,6 +833,22 @@ private static final long serialVersionUID = 0L;
               bitField0_ |= 0x00000040;
               break;
             } // case 57
+            case 65: {
+              double v = input.readDouble();
+              ensureContainerMaskIsMutable();
+              containerMask_.addDouble(v);
+              break;
+            } // case 65
+            case 66: {
+              int length = input.readRawVarint32();
+              int limit = input.pushLimit(length);
+              ensureContainerMaskIsMutable();
+              while (input.getBytesUntilLimit() > 0) {
+                containerMask_.addDouble(input.readDouble());
+              }
+              input.popLimit(limit);
+              break;
+            } // case 66
             default: {
               if (!super.parseUnknownField(input, extensionRegistry, tag)) {
                 done = true; // was an endgroup tag
@@ -1484,6 +1570,87 @@ private static final long serialVersionUID = 0L;
     public Builder clearContainerType() {
       bitField0_ = (bitField0_ & ~0x00000040);
       containerType_ = 0D;
+      onChanged();
+      return this;
+    }
+
+    private com.google.protobuf.Internal.DoubleList containerMask_ = emptyDoubleList();
+    private void ensureContainerMaskIsMutable() {
+      if (!((bitField0_ & 0x00000080) != 0)) {
+        containerMask_ = mutableCopy(containerMask_);
+        bitField0_ |= 0x00000080;
+      }
+    }
+    /**
+     * <code>repeated double containerMask = 8;</code>
+     * @return A list containing the containerMask.
+     */
+    public java.util.List<java.lang.Double>
+        getContainerMaskList() {
+      return ((bitField0_ & 0x00000080) != 0) ?
+               java.util.Collections.unmodifiableList(containerMask_) : containerMask_;
+    }
+    /**
+     * <code>repeated double containerMask = 8;</code>
+     * @return The count of containerMask.
+     */
+    public int getContainerMaskCount() {
+      return containerMask_.size();
+    }
+    /**
+     * <code>repeated double containerMask = 8;</code>
+     * @param index The index of the element to return.
+     * @return The containerMask at the given index.
+     */
+    public double getContainerMask(int index) {
+      return containerMask_.getDouble(index);
+    }
+    /**
+     * <code>repeated double containerMask = 8;</code>
+     * @param index The index to set the value at.
+     * @param value The containerMask to set.
+     * @return This builder for chaining.
+     */
+    public Builder setContainerMask(
+        int index, double value) {
+      
+      ensureContainerMaskIsMutable();
+      containerMask_.setDouble(index, value);
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>repeated double containerMask = 8;</code>
+     * @param value The containerMask to add.
+     * @return This builder for chaining.
+     */
+    public Builder addContainerMask(double value) {
+      
+      ensureContainerMaskIsMutable();
+      containerMask_.addDouble(value);
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>repeated double containerMask = 8;</code>
+     * @param values The containerMask to add.
+     * @return This builder for chaining.
+     */
+    public Builder addAllContainerMask(
+        java.lang.Iterable<? extends java.lang.Double> values) {
+      ensureContainerMaskIsMutable();
+      com.google.protobuf.AbstractMessageLite.Builder.addAll(
+          values, containerMask_);
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>repeated double containerMask = 8;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearContainerMask() {
+      containerMask_ = emptyDoubleList();
+      bitField0_ = (bitField0_ & ~0x00000080);
       onChanged();
       return this;
     }

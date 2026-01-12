@@ -29,6 +29,7 @@ message State {
   Matrix4D nearbyItemDrops = 5;
   Matrix container = 6;
   double containerType = 7;
+  repeated double containerMask = 8;
 }
 
 message Action {

@@ -4,6 +4,7 @@ import numpy as np
 from PPOTrainer import PPOTrainer
 
 from ActorCritic import *
+from ContainerModel import *
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -18,69 +19,94 @@ def convert_obs(obs_np):
     return obs_t
 
 
-data1 = torch.load("expert_data2.pt", weights_only=False)
-data2 = torch.load("expert_data3.pt", weights_only=False)
-data3 = torch.load("expert_data4.pt", weights_only=False)
+data1 = torch.load("world_expert_data4.pt", weights_only=False)
+data2 = torch.load("world_expert_data5.pt", weights_only=False)
+data3 = torch.load("world_expert_data6.pt", weights_only=False)
+data4 = torch.load("world_expert_data7.pt", weights_only=False)
+data5 = torch.load("world_expert_data8.pt", weights_only=False)
+data6 = torch.load("world_expert_data9.pt", weights_only=False)
+data7 = torch.load("world_expert_data10.pt", weights_only=False)
 
 
-combined_data = data1 + data2 + data3
+data1cont = torch.load("cont_expert_data3.pt", weights_only=False)
+data2cont = torch.load("cont_expert_data4.pt", weights_only=False)
+data3cont = torch.load("cont_expert_data5.pt", weights_only=False)
+data4cont = torch.load("cont_expert_data6.pt", weights_only=False)
+
+
+combined_data = data1 + data2 + data3 + data4 + data5 + data6 + data7
+combined_datac_cont = data1cont + data2cont + data3cont + data4cont
 
 agent_info_dim = 21
 num_items = 1488
 num_blocks = 1166
 num_entities = 153
 
-model = ActorCriticNetwork(agent_info_dim, num_items, num_blocks, num_entities)
-model.to(DEVICE)
+world_model = ActorCriticNetwork(agent_info_dim, num_items, num_blocks, num_entities)
+world_model.to(DEVICE)
 
-ppo = PPOTrainer(model, max_policy_train_iters=5)
+cont_model = ContainerModel(agent_info_dim, num_items, num_entities)
+cont_model.to(DEVICE)
 
-batch_size = 512
-n = len(combined_data)
-best = -1
+ppo = PPOTrainer(world_model, cont_model, max_policy_train_iters=5)
+
+world_data = combined_data
+cont_data  = combined_datac_cont
+
+world_batch_size = 512
+cont_batch_size  = min(32, len(cont_data))
+
+def build_batch(entries):
+    obs_batch = []
+    act_batch = []
+
+    for e in entries:
+        obs_batch.append(convert_obs(e["obs"]))
+        act_batch.append(torch.tensor(e["action"], dtype=torch.float32).to(DEVICE))
+
+    batched_obs = {
+        k: torch.stack([o[k] for o in obs_batch], dim=0).squeeze(1)
+        for k in obs_batch[0].keys()
+    }
+
+    batched_actions = torch.stack(act_batch, dim=0)
+    return batched_obs, batched_actions
+
+
+epochs = 100
 epoch = 0
 
 while True:
-    # shuffle indices, not the dicts
-    indices = list(range(n))
-    random.shuffle(indices)
+    random.shuffle(world_data)
 
-    for start in range(0, n, batch_size):
-        batch_idx = indices[start:start + batch_size]
+    # -------- WORLD POLICY training --------
+    for start in range(0, len(world_data), world_batch_size):
+        batch = world_data[start:start + world_batch_size]
+        obs, actions = build_batch(batch)
+        ppo.imitation_train_policy(obs, actions)
 
-        obs_batch = []
-        act_batch = []
+    acc1 = ppo.test_accuracy(obs, actions, True)
+    print(f"Epoch {epoch}, Accuracy {acc1:.4f}")
 
-        for idx in batch_idx:
-            entry = combined_data[idx]
-            obs_batch.append(convert_obs(entry["obs"]))
+    # -------- CONTAINER POLICY training --------
+    if len(cont_data) > 0:
+        for _ in range(10):
+            batch = random.sample(cont_data, cont_batch_size)
+            obs, actions = build_batch(batch)
 
-            act_batch.append(torch.tensor(entry["action"], dtype=torch.int64).to(DEVICE))
+            ppo.imitation_train_policy_cont(obs, actions)
 
-        batched_obs = {
-            key: torch.stack([o[key] for o in obs_batch], dim=0)
-            for key in obs_batch[0].keys()
-        }
-        for k in batched_obs.keys():
-            batched_obs[k] = batched_obs[k].squeeze(1)
-            # print(f'{k}: {batched_obs[k].shape}')
+    # -------- eval --------
+    acc2 = ppo.test_accuracy(obs, actions, False)
+    print(f"Epoch {epoch}, Accuracy {acc2:.4f}")
 
-        batched_actions = torch.stack(act_batch, dim=0)  # shape (batch,4)
-
-        ppo.imitation_train_policy(batched_obs, batched_actions)
-
-    acc = ppo.test_accuracy(batched_obs, batched_actions)
-    print(f"Epoch {epoch}, Accuracy {acc:.4f}")
-
-    best = acc
     if epoch % 10 == 0:
         torch.save({
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": ppo.optimizer.state_dict(),
-            "best_acc": best,
-        }, f"imitate/model_{acc}_epoch_{epoch}.pth")
-        print(f'Saved model to imitate/model_{acc}_epoch_{epoch}.pth')
-    print()
+            "world_model": world_model.state_dict(),
+            "cont_model": cont_model.state_dict(),
+            "best_acc_world": acc1,
+            "best_acc_cont": acc2,
+        }, f"imitate/model_epoch_new_larger_{epoch}.pth")
+        print(f"Saved checkpoint at epoch {epoch}")
+
     epoch += 1
-
-

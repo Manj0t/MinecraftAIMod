@@ -42,28 +42,6 @@ public class MinecraftaimodClient implements ClientModInitializer {
                 CraftPagesPayload.CODEC
         );
 
-//        PayloadTypeRegistry.playC2S().register(
-//                SelectRecipePayload.ID,
-//                SelectRecipePayload.CODEC
-//        );
-
-//        NEXT_PAGE = KeyBindingHelper.registerKeyBinding(
-//                new KeyBinding(
-//                        "key.minecraftaimod.next_page",
-//                        InputUtil.Type.KEYSYM,
-//                        GLFW.GLFW_KEY_C,
-//                        KeyBinding.Category.MISC
-//                )
-//        );
-//
-//        PAGE_PREV = KeyBindingHelper.registerKeyBinding(
-//                new KeyBinding(
-//                        "key.minecraftaimod.page_prev",
-//                        InputUtil.Type.KEYSYM,
-//                        GLFW.GLFW_KEY_X,
-//                        KeyBinding.Category.MISC
-//                )
-//        );
         ClientTickEvents.START_CLIENT_TICK.register(client -> {
             if (client.player == null) return;
 
@@ -74,7 +52,7 @@ public class MinecraftaimodClient implements ClientModInitializer {
 
             if (!altDown) return;
 
-            // 🔒 Swallow vanilla hotbar keys 1–5 ONLY
+            // Swallow vanilla hotbar keys 1–5 opnly
             for (int i = 0; i < 5; i++) {
                 while (client.options.hotbarKeys[i].wasPressed()) {
                     // swallow
@@ -98,7 +76,7 @@ public class MinecraftaimodClient implements ClientModInitializer {
 
             if (!altDown) return;
 
-            // Alt + C → next page
+            // Alt + C -> next page
             if (xDown && !xWasDown) {
                 System.out.println("NEXT PAGE");
                 ClientCraftUI.nextPage();
@@ -109,11 +87,11 @@ public class MinecraftaimodClient implements ClientModInitializer {
                 ClientCraftUI.prevPage();
             }
 
-            // Alt + 1–5 → select recipe
+            // Alt + 1–5 -> select recipe
             for (int i = 0; i < SELECT_KEYS.length; i++) {
                 boolean down = SELECT_KEYS[i].isPressed();
                 if (down && !recipeWasDown[i]) {
-                    if(i >= ClientCraftUI.getCurrentPage().size()) continue; // Don't index out of range
+                    if(i >= ClientCraftUI.getCurrentPage().size()) continue;
 
                     String item = ClientCraftUI.getItemDisplayName(i);
 
@@ -133,7 +111,7 @@ public class MinecraftaimodClient implements ClientModInitializer {
                     // swallow the press so vanilla never sees it
                 }
 
-                recipeWasDown[i] = down; // Prevent spam, more accurate data sent for training
+                recipeWasDown[i] = down;
             }
 
             xWasDown = xDown;

@@ -91,7 +91,6 @@ public abstract class InventoryMoveTrackerMixin {
 
         ScreenHandler handler = (ScreenHandler) (Object) this;
 
-        // Compare BEFORE vs AFTER
         int slot1 = -1;
         int slot2 = -1;
         for (int i = 0; i < handler.slots.size(); i++) {
@@ -114,9 +113,6 @@ public abstract class InventoryMoveTrackerMixin {
 //            int droppedItem = dropped ? 1 : 0;
 //            int droppedSlot = dropSlot;
 //            int droppedAll = dropAll;
-
-            slot1 = mapClientToServerSlot(slot1);
-            slot2 = mapClientToServerSlot(slot2);
 //            droppedSlot = mapClientToServerSlot(dropSlot);
 
             //Main inventory handled the same, no changes needed there

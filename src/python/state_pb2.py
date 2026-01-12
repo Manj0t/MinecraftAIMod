@@ -13,7 +13,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0bstate.proto\x12\x0bminecraftai\"/\n\x08Matrix3D\x12#\n\x06matrix\x18\x01 \x03(\x0b\x32\x13.minecraftai.Matrix\"3\n\x08Matrix4D\x12\'\n\x08matrix3D\x18\x01 \x03(\x0b\x32\x15.minecraftai.Matrix3D\"(\n\x06Matrix\x12\x1e\n\x04rows\x18\x01 \x03(\x0b\x32\x10.minecraftai.Row\"\x15\n\x03Row\x12\x0e\n\x06values\x18\x01 \x03(\x01\"\x8b\x02\n\x05State\x12\x11\n\tagentInfo\x18\x01 \x03(\x01\x12&\n\tinventory\x18\x02 \x01(\x0b\x32\x13.minecraftai.Matrix\x12+\n\x0enearbyEntities\x18\x03 \x01(\x0b\x32\x13.minecraftai.Matrix\x12+\n\x0cnearbyBlocks\x18\x04 \x01(\x0b\x32\x15.minecraftai.Matrix3D\x12.\n\x0fnearbyItemDrops\x18\x05 \x01(\x0b\x32\x15.minecraftai.Matrix4D\x12&\n\tcontainer\x18\x06 \x01(\x0b\x32\x13.minecraftai.Matrix\x12\x15\n\rcontainerType\x18\x07 \x01(\x01\"\x19\n\x06\x41\x63tion\x12\x0f\n\x07\x61\x63tions\x18\x01 \x03(\x02\x42#\n\x1fme.sand.minecraftaimod.protobufP\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0bstate.proto\x12\x0bminecraftai\"/\n\x08Matrix3D\x12#\n\x06matrix\x18\x01 \x03(\x0b\x32\x13.minecraftai.Matrix\"3\n\x08Matrix4D\x12\'\n\x08matrix3D\x18\x01 \x03(\x0b\x32\x15.minecraftai.Matrix3D\"(\n\x06Matrix\x12\x1e\n\x04rows\x18\x01 \x03(\x0b\x32\x10.minecraftai.Row\"\x15\n\x03Row\x12\x0e\n\x06values\x18\x01 \x03(\x01\"\xa2\x02\n\x05State\x12\x11\n\tagentInfo\x18\x01 \x03(\x01\x12&\n\tinventory\x18\x02 \x01(\x0b\x32\x13.minecraftai.Matrix\x12+\n\x0enearbyEntities\x18\x03 \x01(\x0b\x32\x13.minecraftai.Matrix\x12+\n\x0cnearbyBlocks\x18\x04 \x01(\x0b\x32\x15.minecraftai.Matrix3D\x12.\n\x0fnearbyItemDrops\x18\x05 \x01(\x0b\x32\x15.minecraftai.Matrix4D\x12&\n\tcontainer\x18\x06 \x01(\x0b\x32\x13.minecraftai.Matrix\x12\x15\n\rcontainerType\x18\x07 \x01(\x01\x12\x15\n\rcontainerMask\x18\x08 \x03(\x01\"\x19\n\x06\x41\x63tion\x12\x0f\n\x07\x61\x63tions\x18\x01 \x03(\x02\x42#\n\x1fme.sand.minecraftaimod.protobufP\x01\x62\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'state_pb2', globals())
@@ -30,7 +30,7 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _ROW._serialized_start=172
   _ROW._serialized_end=193
   _STATE._serialized_start=196
-  _STATE._serialized_end=463
-  _ACTION._serialized_start=465
-  _ACTION._serialized_end=490
+  _STATE._serialized_end=486
+  _ACTION._serialized_start=488
+  _ACTION._serialized_end=513
 # @@protoc_insertion_point(module_scope)

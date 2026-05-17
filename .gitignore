@@ -28,6 +28,7 @@ src/python/graphs/
 src/python/imitate/
 src/python/cnn_debug/
 src/python/*.pt
+src/python/*.pth
 
 ### OS junk ###
 .DS_Store

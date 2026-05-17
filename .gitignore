@@ -29,7 +29,8 @@ src/python/imitate/
 src/python/cnn_debug/
 src/python/*.pt
 src/python/*.pth
-
+src/python/**/*.pth
+src/python/**/*.pt
 ### OS junk ###
 .DS_Store
 Thumbs.db

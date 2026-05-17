@@ -3,7 +3,7 @@ from torch import nn
 from torch import optim
 from torch.distributions import Categorical, Bernoulli
 import numpy as np
-import CNNDebugger
+from utils import debug
 
 batch_size = 256
 

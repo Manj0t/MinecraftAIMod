@@ -1,17 +1,13 @@
 import socket
 import struct
-import time
-from PPOTrainer import PPOTrainer
-from utils import set_conn, get_state, is_action_noOp
-import utils
-import state_pb2
+from env.env_client import EnvClient
+from env import state_pb2
 import torch
-import os
 import numpy as np
 import sys
 import threading
 
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+from config import DEVICE
 
 COLLECT = True
 def start_collection_thread():
@@ -33,20 +29,19 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 sock.connect((HOST, PORT))
 
-set_conn([sock], 1)
+env_client = EnvClient(1, [sock])
 print(f"Connected to env on port {PORT}")
 
 worldData = []
 contData = []
-utils.prevActions = torch.zeros(1, 11, dtype=torch.float32).to(DEVICE)
 i = 0
 
 start_collection_thread()
 
 while COLLECT:
-    prev_act_copy = utils.prevActions.clone()
+    prev_act_copy = env_client.prev_actions.clone()
 
-    obs = get_state() # Dictionary of tensors
+    obs = env_client.get_state() # Dictionary of tensors
     obs['PrevActions'] = prev_act_copy
 
     obs_np = {k: (v.cpu().numpy() if isinstance(v, torch.Tensor) else v) for k, v in obs.items()}
@@ -72,7 +67,7 @@ while COLLECT:
     action.ParseFromString(buffer)
 
     expertAction = list(action.actions)
-    if not is_action_noOp(expertAction, utils.prevActions):
+    if not env_client.is_action_noOp(expertAction):
 
         action_t = torch.tensor(expertAction, dtype=torch.float32).to(DEVICE)
         if len(action_t) == 3:
@@ -87,7 +82,7 @@ while COLLECT:
                 "action" : action_t.cpu().numpy(),
             })
 
-            utils.prevActions = action_t.unsqueeze(0)
+            env_client.prev_actions = action_t.unsqueeze(0)
         print(expertAction)
         i += 1
     if i % 500 == 0:

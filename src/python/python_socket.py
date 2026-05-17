@@ -1,35 +1,43 @@
-import socket
-import struct
-import time
-from PPOTrainer import PPOTrainer
-from utils import set_conn, rollout, print_cuda_mem, plot_rewards, test_rollout
-import state_pb2
-from ActorCritic import *
-from ContainerModel import *
 import torch
-import os
 import numpy as np
-from CNNDebugger import start_debugging
+
 import sys
 
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+import socket
+import struct
+
+from training.PPOTrainer import PPOTrainer
+from models.ActorCritic import ActorCriticNetwork
+from models.ContainerModel import ContainerModel
+
+from utils.test_rollout import test_rollout
+from utils.debug import start_debugging, print_cuda_mem
+from utils.plotting import plot_rewards
+from utils.rollout import rollout
+
+from training.weight_loading import load_checkpoint
+
+from env.env_client import EnvClient
+from config import DEVICE
 
 HOST = '127.0.0.1'
 
-num_envs = int(sys.argv[1])
-test = False
 try:
-    sys.argv[2]
-    test = True
+    num_envs = int(sys.argv[1])
 except IndexError:
-    pass
+    print("Number of environments not specified")
+    exit(1)
+
+if len(sys.argv) > 2:
+    test = True
+else:
+    test = False
 
 startPort = 5000
 
+#  -- Establish Connections --
 PORTS = [startPort + i for i in range(num_envs)]
 
-
-curr_best = float('-inf')
 ep_rewards = []
 
 env_sockets = []
@@ -62,8 +70,9 @@ num_entities  = headers[0][3]
 
 print(f'agent_info_dim: {agent_info_dim}, num_items: {num_items}, num_blocks: {num_blocks}, num_entities {num_entities}')
 
-set_conn(env_sockets, num_envs)
+env_client = EnvClient(num_envs, env_sockets)
 
+# --- Load Models --- #
 world_model = ActorCriticNetwork(agent_info_dim, num_items, num_blocks, num_entities)
 world_model.to(DEVICE)
 
@@ -72,88 +81,35 @@ container_model.to(DEVICE)
 
 ppo = PPOTrainer(world_model, container_model)
 
-load_path = "imitate/model.pth"
-iteration = 0
-curr_best = float('-inf')
-if os.path.exists(load_path):
-    print(f"<(-_-)> Loading checkpoint: {load_path}")
-    checkpoint = torch.load(load_path, map_location=DEVICE, weights_only=False)
+iteration, curr_best = load_checkpoint(
+    world_model, ppo, "imitate/model.pth", DEVICE, ep_rewards
+)
 
-    model_dict = world_model.state_dict()
-    pretrained_dict = checkpoint["world_model"]
-
-    filtered_dict = {}
-
-    for key, params in pretrained_dict.items():
-        if key in model_dict and params.shape == model_dict[key].shape:
-            filtered_dict[key] = params
-        elif key in model_dict:
-            with torch.no_grad():
-                old_params = params
-                new = model_dict[key].clone()
-
-                slices = tuple(slice(0, min(o, n)) for o, n in zip(old_params.shape, new.shape))
-                new[slices] = old_params[slices]
-
-                filtered_dict[key] = new
-
-
-    skipped_keys = set(pretrained_dict.keys()) - set(filtered_dict.keys()) # Should be empty now
-
-
-    print("-> Loaded:", filtered_dict.keys())
-    print("- Skipped:", skipped_keys)
-
-    model_dict.update(filtered_dict)
-    world_model.load_state_dict(model_dict, strict=False)
-    # container_model.load_state_dict(checkpoint["cont_model"])
-
-    if "optimizer_state_dict" in checkpoint:
-        try:
-            ppo.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-            print("> Loaded optimizer state!")
-
-
-        except Exception as e:
-            print("/| Optimizer state incompatible — resetting optimizer.")
-            # ppo.policy_optimizer = torch.optim.Adam(ppo.policy_optimizer.param_groups[0]["params"])
-            # ppo.value_optimizer = torch.optim.Adam(ppo.value_optimizer.param_groups[0]["params"])
-            ppo.optimizer = torch.optim.Adam(ppo.optimizer.param_groups[0]["params"])
-
-    # curr_best = checkpoint['best_reward']
-    ep_rewards.append(curr_best)
-
-    print(f"> Loaded model! Best reward: {curr_best}")
-
-else:
-    print("- No checkpoint found, training from scratch")
-
-
+# -- Start Debugging --
 start_debugging()
-
 
 if test:
     print("Testing model with argmax")
     while True:
         for s in env_sockets:
             s.sendall(struct.pack(">i", 1))
-        test_rollout(world_model)
+        test_rollout(env_client, world_model)
 
 for i in range(iteration, 10000):
     print("Loop ", i)
     for s in env_sockets:
         s.sendall(struct.pack(">i", 1))
     print_cuda_mem("Before Rollout")
-    train_data, cont_train_data, ep_reward = rollout(world_model, container_model, ppo, ep_rewards, i, curr_best)
+    train_data, cont_train_data, ep_reward = rollout(env_client, world_model, container_model, ppo, ep_rewards, i, curr_best)
     ep_rewards.append(np.mean(ep_reward))
     print_cuda_mem("After Rollout")
 
     if ep_rewards[-1] >= curr_best or i % 5 == 0:
         if ep_rewards[-1] >= curr_best:
             curr_best = ep_rewards[-1]
-            save_path = f"models/model_best_larger_model{curr_best:.2f}_iter{i}.pth"
+            save_path = f"checkpoints/model_best_larger_model{curr_best:.2f}_iter{i}.pth"
         else:
-            save_path = f"models/iter_saves/model_itr_larger_model{i}.pth"
+            save_path = f"checkpoints/iter_saves/model_itr_larger_model{i}.pth"
         torch.save({
             "model_state_dict": world_model.state_dict(),
             "optimizer_state_dict": ppo.optimizer.state_dict(),

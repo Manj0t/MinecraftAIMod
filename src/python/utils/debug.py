@@ -5,12 +5,10 @@ import os
 import math
 import threading
 import sys
+from config import DEVICE
 
-SAVE_DIR = "cnn_debug"   # folder where images are saved
+SAVE_DIR = "../cnn_debug"  # folder where images are saved
 os.makedirs(SAVE_DIR, exist_ok=True)
-
-DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-
 
 DEBUG_CNN = False
 SAVE_STATE = False
@@ -18,6 +16,7 @@ DEBUG_KL = False
 
 def start_debugging():
     threading.Thread(target=debug_input_listener, daemon=True).start()
+
 
 def debug_input_listener():
     global DEBUG_CNN
@@ -33,6 +32,7 @@ def debug_input_listener():
         elif user_input.lower() == "k":
             DEBUG_KL = not DEBUG_KL
             print(f'DEBUG_KL is now {DEBUG_KL}')
+
 
 def save_slice(tensor, title, filename, depth_axis=0, slice_index=None, cmap="viridis"):
 
@@ -141,3 +141,12 @@ def debug_cnn(model, block_ids_tensor, ppo, ep_rewards, i, curr_best):
         save_feature_maps(feat, f"{name}_maps")
 
     print("Debugging complete.")
+
+
+def print_cuda_mem(tag=""):
+    if torch.cuda.is_available():
+        allocated = torch.cuda.memory_allocated() / (1024**2)
+        reserved  = torch.cuda.memory_reserved() / (1024**2)
+        print(f"[{tag}] CUDA Memory: allocated={allocated:.2f} MB, reserved={reserved:.2f} MB")
+    else:
+        print("No CUDA device available.")

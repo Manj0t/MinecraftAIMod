@@ -1,12 +1,12 @@
 import torch
 import random
 import numpy as np
-from PPOTrainer import PPOTrainer
+from training.PPOTrainer import PPOTrainer
 
-from ActorCritic import *
-from ContainerModel import *
+from models.ActorCritic import *
+from models.ContainerModel import *
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from config import DEVICE
 
 def convert_obs(obs_np):
     obs_t = {}

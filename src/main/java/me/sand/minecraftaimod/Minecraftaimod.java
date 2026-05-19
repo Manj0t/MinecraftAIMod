@@ -184,6 +184,8 @@ public class Minecraftaimod implements ModInitializer {
     @Override
     public void onInitialize() {
 
+        BlockRegistryDumper.dump("block_properties.json");
+
         PayloadTypeRegistry.playC2S().register(
                 InventoryMovePayload.ID,
                 InventoryMovePayload.CODEC

@@ -5,7 +5,7 @@ from torch.distributions import Categorical, Bernoulli
 import numpy as np
 from utils import debug
 
-batch_size = 256
+batch_size = 128
 
 
 class PPOTrainer():
@@ -143,7 +143,7 @@ class PPOTrainer():
             loss.backward()
             self.cont_optim.step()
 
-    def test_accuracy(self, obs, actions, world_policy_bool, batch_size=2048):
+    def test_accuracy(self, obs, actions, world_policy_bool, batch_size=1024):
         if world_policy_bool:
             self.ac.eval()
 
@@ -393,7 +393,7 @@ class PPOTrainer():
 
                 drop_lp = (
                         drop_slot_dist.log_prob(drop_slot_act)
-                        + drop_all_flag_dist.log_prob(drop_all_flag_act)
+                        + drop_all_flag_dist.log_prob(drop_all_flag_act).squeeze(-1)
                 )
 
                 craft_lp = craft_item_id_dist.log_prob(craft_item_act)
@@ -413,6 +413,7 @@ class PPOTrainer():
                         + is_craft * craft_lp
                 )
 
+
                 approx_kl = 0.5 * ((new_log_probs - batch_summed_old_log_probs) ** 2).mean()
 
                 entropy_bonus = (
@@ -430,7 +431,7 @@ class PPOTrainer():
                         )
                         + is_drop * (
                                 drop_slot_dist.entropy()
-                                + drop_all_flag_dist.entropy()
+                                + drop_all_flag_dist.entropy().squeeze(-1)
                         )
                         + is_craft * craft_item_id_dist.entropy()
                 ).mean() * 0.15
@@ -457,5 +458,5 @@ class PPOTrainer():
                     print(f"Early stop on policy update: KL={approx_kl:.4f}")
                     return
 
-            if CNNDebugger.DEBUG_KL and len(kl_arr) > 0:
+            if debug.DEBUG_KL and len(kl_arr) > 0:
                 print(f'Average kl across batches {np.mean(kl_arr)}')

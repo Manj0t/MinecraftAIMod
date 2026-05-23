@@ -42,7 +42,7 @@ container_model.to(DEVICE)
 ppo = PPOTrainer(world_model, container_model)
 
 iteration, curr_best = load_checkpoint(
-    world_model, ppo, "imitate/model.pth", DEVICE, ep_rewards
+    world_model, ppo, "", DEVICE, proxy_paths={"block_embedder": "checkpoints/proxy/block_embedder.pth", "block_encoder": "checkpoints/proxy/block_encoder.pth"}, ep_rewards=ep_rewards
 )
 
 # -- Start Debugging --

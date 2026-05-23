@@ -1,4 +1,4 @@
-package me.sand.minecraftaimod;
+package me.sand.minecraftaimod.network;
 
 import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.codec.PacketCodec;

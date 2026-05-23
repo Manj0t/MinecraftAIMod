@@ -1,6 +1,6 @@
 package me.sand.minecraftaimod.client;
 
-import me.sand.minecraftaimod.CraftOption;
+import me.sand.minecraftaimod.network.CraftOption;
 
 import java.util.List;
 

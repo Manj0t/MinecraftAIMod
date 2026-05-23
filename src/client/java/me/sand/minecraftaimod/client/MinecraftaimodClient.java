@@ -1,9 +1,8 @@
 package me.sand.minecraftaimod.client;
 
-import me.sand.minecraftaimod.CraftOption;
+import me.sand.minecraftaimod.network.CraftOption;
 import me.sand.minecraftaimod.network.CraftPagesPayload;
 import me.sand.minecraftaimod.network.InteractionPayload;
-import me.sand.minecraftaimod.network.InventoryMovePayload;
 import me.sand.minecraftaimod.network.SelectRecipePayload;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -12,7 +11,6 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
-import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
@@ -20,8 +18,6 @@ import net.minecraft.client.util.InputUtil;
 import net.minecraft.client.util.Window;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import org.joml.Matrix3x2fStack;
 import org.lwjgl.glfw.GLFW;
 
 public class MinecraftaimodClient implements ClientModInitializer {

@@ -1,6 +1,5 @@
 package me.sand.minecraftaimod.network;
 
-import me.sand.minecraftaimod.CraftOption;
 import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.codec.PacketCodec;
 import net.minecraft.network.codec.PacketCodecs;

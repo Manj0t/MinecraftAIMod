@@ -84,7 +84,7 @@ def _init_world_buffer(num_envs: int):
         "done": [[] for _ in range(num_envs)]
     }  # obs, act, reward, value, act_log_prob, dones
 
-def rollout(env_client: EnvClient, world_model: ActorCriticNetwork, container_model: ContainerModel, ppo: PPOTrainer, ep_rewards, ppo_iter, curr_best, max_steps=20):
+def rollout(env_client: EnvClient, world_model: ActorCriticNetwork, container_model: ContainerModel, ppo: PPOTrainer, ep_rewards, ppo_iter, curr_best, max_steps=1048):
     world_model.eval()
     container_model.eval()
 
@@ -213,7 +213,7 @@ def rollout(env_client: EnvClient, world_model: ActorCriticNetwork, container_mo
             to_slot_dist = Categorical(logits=logits_dict['to_slot'])
 
             drop_slot_dist = Categorical(logits=logits_dict['drop_slot'])
-            drop_all_flag_dist = Bernoulli(logits=logits_dict['drop_all_flag'])
+            drop_all_flag_dist = Bernoulli(logits=logits_dict['drop_all_flag'].squeeze(-1))
 
             craft_item_id_dist = Categorical(logits=logits_dict['craft_item_id'])
 

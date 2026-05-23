@@ -5,7 +5,7 @@ from models.ActorCritic import ActorCriticNetwork
 from training.PPOTrainer import PPOTrainer
 
 
-def load_checkpoint(world_model: ActorCriticNetwork, ppo: PPOTrainer, load_path: str, device, ep_rewards=None):
+def load_checkpoint(world_model: ActorCriticNetwork, ppo: PPOTrainer, load_path: str, device, proxy_paths: dict[str: str] | None = None, ep_rewards=None):
     """
     Load a checkpoint with shape-aware partial weight loading.
     Handles mismatched layer shapes by copying overlapping slices.
@@ -14,6 +14,20 @@ def load_checkpoint(world_model: ActorCriticNetwork, ppo: PPOTrainer, load_path:
     """
     if not os.path.exists(load_path):
         print("- No checkpoint found, training from scratch")
+        if proxy_paths is not None:
+            for type, proxy_path in proxy_paths.items():
+                checkpoint = torch.load(proxy_path, map_location=device, weights_only=False)
+                if type == "block_embedder":
+                    world_model.block_embedder.load_state_dict(checkpoint["embedder_state_dict"])
+
+                    # Freeze embedder
+                    for param in world_model.block_embedder.parameters():
+                        param.requires_grad = False
+
+                elif type == "block_encoder":
+                    world_model.block_encoder.load_state_dict(checkpoint["encoder_state_dict"])
+
+                print(f'Loaded proxy {proxy_path}')
         return 0, float('-inf')
 
     print(f"<(-_-)> Loading checkpoint: {load_path}")
@@ -61,6 +75,19 @@ def load_checkpoint(world_model: ActorCriticNetwork, ppo: PPOTrainer, load_path:
     best_reward = checkpoint.get("best_reward", float('-inf'))
     if ep_rewards is not None:
         ep_rewards.append(best_reward)
+
+    if proxy_paths is not None:
+        for type, proxy_path in proxy_paths.items():
+            checkpoint = torch.load(proxy_path, map_location=device, weights_only=False)
+            if type == "block_embedder":
+                world_model.block_embedder.load_state_dict(checkpoint["embedder_state_dict"])
+
+                # Freeze embedder
+                for param in world_model.block_embedder.parameters():
+                    param.requires_grad = False
+
+            elif type == "block_encoder":
+                world_model.block_encoder.load_state_dict(checkpoint["encoder_state_dict"])
 
     print(f"> Loaded model! Best reward: {best_reward}")
     return 0, best_reward

@@ -7,7 +7,7 @@ import threading
 import sys
 from config import DEVICE
 
-SAVE_DIR = "../cnn_debug"  # folder where images are saved
+SAVE_DIR = "../graphs/cnn_debug"  # folder where images are saved
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 DEBUG_CNN = False

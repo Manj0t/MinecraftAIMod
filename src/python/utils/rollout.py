@@ -44,6 +44,7 @@ def _init_world_buffer(num_envs: int):
         "NearbyItemDropsObs": [[] for _ in range(num_envs)],
         "AgentInfoObs": [[] for _ in range(num_envs)],
         "PrevActionsObs": [[] for _ in range(num_envs)],
+        "HiddenStates": [[] for _ in range(num_envs)],
 
         "inv_act": [[] for _ in range(num_envs)],
 
@@ -84,7 +85,7 @@ def _init_world_buffer(num_envs: int):
         "done": [[] for _ in range(num_envs)]
     }  # obs, act, reward, value, act_log_prob, dones
 
-def rollout(env_client: EnvClient, world_model: ActorCriticNetwork, container_model: ContainerModel, ppo: PPOTrainer, ep_rewards, ppo_iter, curr_best, max_steps=1048):
+def rollout(env_client: EnvClient, world_model: ActorCriticNetwork, container_model: ContainerModel, ppo: PPOTrainer, ep_rewards, ppo_iter, curr_best, max_steps=1024):
     world_model.eval()
     container_model.eval()
 
@@ -195,8 +196,12 @@ def rollout(env_client: EnvClient, world_model: ActorCriticNetwork, container_mo
                 "AgentInfo": obs["AgentInfo"][idx],
                 "PrevActions": obs["PrevActions"][idx],
             }
+
+            # Snapshot hidden state BEFORE the forward pass
+            h_prev_snapshot = world_model.h_states[0:num_envs].detach().clone().cpu()
+
             with torch.no_grad():
-                logits_dict, value = world_model(world_obs)
+                logits_dict, value = world_model(world_obs, env_client.num_envs)
 
 
             inv_act_dist = Categorical(logits=logits_dict['inv_act'])
@@ -290,6 +295,7 @@ def rollout(env_client: EnvClient, world_model: ActorCriticNetwork, container_mo
                 world_rollout_buffer['NearbyItemDropsObs'][env_i].append(obs['NearbyItemDrops'][env_i].detach().cpu())
                 world_rollout_buffer['AgentInfoObs'][env_i].append(obs['AgentInfo'][env_i].detach().cpu())
                 world_rollout_buffer['PrevActionsObs'][env_i].append(obs['PrevActions'][env_i].detach().cpu())
+                world_rollout_buffer["HiddenStates"][env_i].append(h_prev_snapshot[k])
 
                 world_rollout_buffer["inv_act"][env_i].append(inv_act[k].detach().cpu())
 
@@ -353,7 +359,7 @@ def rollout(env_client: EnvClient, world_model: ActorCriticNetwork, container_mo
         for e in range(num_envs):
             ep_reward[e] += reward[e]
 
-    for key in ["AgentInfoObs", "PrevActionsObs", "InventoryObs", "NearbyItemDropsObs", "EntitiesObs", "log_prob", "item_use_log_prob", "hotbar_log_prob", "movement_log_prob", "pan_cam_log_prob", "value", "reward", "done"]:
+    for key in ["AgentInfoObs", "PrevActionsObs", "InventoryObs", "NearbyItemDropsObs", "EntitiesObs", "HiddenStates", "log_prob", "item_use_log_prob", "hotbar_log_prob", "movement_log_prob", "pan_cam_log_prob", "value", "reward", "done"]:
         world_rollout_buffer[key] = np.array(world_rollout_buffer[key], dtype=np.float32)
         #
     for key in ["inv_act", "movement", "side_movement", "pan_cam", "BlocksObs", "item_use", "hotbar", "from_slot", "to_slot", "drop_slot", "drop_all_flag", "craft_item_id"]:
@@ -363,6 +369,8 @@ def rollout(env_client: EnvClient, world_model: ActorCriticNetwork, container_mo
     advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
     world_rollout_buffer['advantage'] = advantages
     world_rollout_buffer['returns'] = returns
+
+    world_model.reset_h_states()
 
     world_model.train()
     container_model.train()

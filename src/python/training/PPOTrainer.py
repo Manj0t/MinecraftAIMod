@@ -17,7 +17,11 @@ class PPOTrainer():
         self.max_policy_train_iters = max_policy_train_iters
         self.value_train_iters = value_train_iters
 
-        shared_params = list(self.ac.shared_layers.parameters())
+        shared_params = (
+                list(self.ac.pre_encoder.parameters()) +
+                list(self.ac.gru.parameters()) +
+                list(self.ac.post_gru.parameters())
+        )
         value_params = list(self.ac.value_layer.parameters())
         policy_params = (
                  list(self.ac.inv_action_type.parameters()) +
@@ -311,6 +315,8 @@ class PPOTrainer():
                     'PrevActions' : obs['PrevActions'][i:i+batch_size],
                 }
 
+                batch_h = obs["HiddenStates"][i:i+batch_size]
+
                 batch_act = {
                     'inv_act'   : act['inv_act'][i:i+batch_size],
 
@@ -339,7 +345,7 @@ class PPOTrainer():
 
                 batch_advantages = advantages[i:i+batch_size].detach()
 
-                logits_dict, value = self.ac(batch_obs)
+                logits_dict, value = self.ac.forward_train(batch_obs, batch_h)
 
                 # ===== distributions =====
                 inv_act_dist = Categorical(logits=logits_dict['inv_act'])

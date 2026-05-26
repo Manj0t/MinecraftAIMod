@@ -11,7 +11,7 @@ def test_rollout(env_client: EnvClient, model: ActorCriticNetwork, max_steps: in
         if i % 500 == 0:
             print(i)
         with torch.no_grad():
-            logits_dict, value = model(obs)
+            logits_dict, value = model(obs, env_client.num_envs)
 
         inv_act = torch.argmax(logits_dict['inv_act'])
 
@@ -27,8 +27,9 @@ def test_rollout(env_client: EnvClient, model: ActorCriticNetwork, max_steps: in
         drop_all_flag_act = torch.argmax(logits_dict['drop_all_flag'])
 
         craft_item_id_act = torch.argmax(logits_dict['craft_item_id'])
-        action = [inv_act, movement_act, item_use_act, hotbar_act, pan_cam_act, from_slot_act, to_slot_act, drop_slot_act, drop_all_flag_act, craft_item_id_act]
+        side_movement_act = torch.argmax(logits_dict['side_movement'])
 
+        action = [inv_act, movement_act, side_movement_act, item_use_act, hotbar_act, pan_cam_act, from_slot_act, to_slot_act, drop_slot_act, drop_all_flag_act, craft_item_id_act]
         next_obs, reward, done = env_client.take_step_test(action, max_steps, i)
 
         obs = next_obs

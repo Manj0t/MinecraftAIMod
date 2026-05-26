@@ -33,7 +33,7 @@ print(f'agent_info_dim: {agent_info_dim}, num_items: {num_items}, num_blocks: {n
 env_client = EnvClient(num_envs, env_sockets)
 
 # --- Load Models --- #
-world_model = ActorCriticNetwork(agent_info_dim, num_items, num_blocks, num_entities)
+world_model = ActorCriticNetwork(agent_info_dim, num_items, num_blocks, num_entities, num_envs)
 world_model.to(DEVICE)
 
 container_model = ContainerModel(agent_info_dim, num_items, num_entities)
@@ -67,9 +67,9 @@ for i in range(iteration, 10000):
     if ep_rewards[-1] >= curr_best or i % 5 == 0:
         if ep_rewards[-1] >= curr_best:
             curr_best = ep_rewards[-1]
-            save_path = f"checkpoints/model_best_larger_model{curr_best:.2f}_iter{i}.pth"
+            save_path = f"checkpoints/model_best_GRU_model{curr_best:.2f}_iter{i}.pth"
         else:
-            save_path = f"checkpoints/iter_saves/model_itr_larger_model{i}.pth"
+            save_path = f"checkpoints/iter_saves/model_itr_GRU_model{i}.pth"
         torch.save({
             "model_state_dict": world_model.state_dict(),
             "optimizer_state_dict": ppo.optimizer.state_dict(),
@@ -94,6 +94,7 @@ for i in range(iteration, 10000):
         'NearbyItemDrops': torch.tensor(flat(train_data['NearbyItemDropsObs'])[permute_idxs], dtype=torch.float32, device=DEVICE),
         'AgentInfo': torch.tensor(flat(train_data['AgentInfoObs'])[permute_idxs], dtype=torch.float32, device=DEVICE),
         'PrevActions': torch.tensor(flat(train_data['PrevActionsObs'])[permute_idxs], dtype=torch.float32, device=DEVICE),
+        'HiddenStates': torch.tensor(flat(train_data['HiddenStates'])[permute_idxs], dtype=torch.float32, device=DEVICE),
 
     }
     #         'ContainerType': torch.tensor(flat(train_data['ContainerType'])[permute_idxs], dtype=torch.float32, device=DEVICE),
@@ -115,7 +116,7 @@ for i in range(iteration, 10000):
         'drop_slot': torch.tensor(flat(train_data['drop_slot'])[permute_idxs], dtype=torch.int64, device=DEVICE),
         'drop_all_flag': torch.tensor(flat(train_data['drop_all_flag'])[permute_idxs], dtype=torch.int64, device=DEVICE),
 
-        'craft_item_id': torch.tensor(flat(train_data['drop_all_flag'])[permute_idxs], dtype=torch.int64, device=DEVICE),
+        'craft_item_id': torch.tensor(flat(train_data['craft_item_id'])[permute_idxs], dtype=torch.int64, device=DEVICE),
     }
 
     advantages = torch.tensor(flat(train_data['advantage'])[permute_idxs], dtype=torch.float32, device=DEVICE)

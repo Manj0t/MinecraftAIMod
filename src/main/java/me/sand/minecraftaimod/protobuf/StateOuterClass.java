@@ -57,7 +57,7 @@ public final class StateOuterClass {
       "\n\006matrix\030\001 \003(\0132\023.minecraftai.Matrix\"3\n\010M" +
       "atrix4D\022\'\n\010matrix3D\030\001 \003(\0132\025.minecraftai." +
       "Matrix3D\"(\n\006Matrix\022\036\n\004rows\030\001 \003(\0132\020.minec" +
-      "raftai.Row\"\025\n\003Row\022\016\n\006values\030\001 \003(\001\"\242\002\n\005St" +
+      "raftai.Row\"\025\n\003Row\022\016\n\006values\030\001 \003(\001\"\266\002\n\005St" +
       "ate\022\021\n\tagentInfo\030\001 \003(\001\022&\n\tinventory\030\002 \001(" +
       "\0132\023.minecraftai.Matrix\022+\n\016nearbyEntities" +
       "\030\003 \001(\0132\023.minecraftai.Matrix\022+\n\014nearbyBlo" +
@@ -65,8 +65,9 @@ public final class StateOuterClass {
       "byItemDrops\030\005 \001(\0132\025.minecraftai.Matrix4D" +
       "\022&\n\tcontainer\030\006 \001(\0132\023.minecraftai.Matrix" +
       "\022\025\n\rcontainerType\030\007 \001(\001\022\025\n\rcontainerMask" +
-      "\030\010 \003(\001\"\031\n\006Action\022\017\n\007actions\030\001 \003(\002B#\n\037me." +
-      "sand.minecraftaimod.protobufP\001b\006proto3"
+      "\030\010 \003(\001\022\022\n\nisWalkable\030\t \003(\001\"\031\n\006Action\022\017\n\007" +
+      "actions\030\001 \003(\002B#\n\037me.sand.minecraftaimod." +
+      "protobufP\001b\006proto3"
     };
     descriptor = com.google.protobuf.Descriptors.FileDescriptor
       .internalBuildGeneratedFileFrom(descriptorData,
@@ -101,7 +102,7 @@ public final class StateOuterClass {
     internal_static_minecraftai_State_fieldAccessorTable = new
       com.google.protobuf.GeneratedMessageV3.FieldAccessorTable(
         internal_static_minecraftai_State_descriptor,
-        new java.lang.String[] { "AgentInfo", "Inventory", "NearbyEntities", "NearbyBlocks", "NearbyItemDrops", "Container", "ContainerType", "ContainerMask", });
+        new java.lang.String[] { "AgentInfo", "Inventory", "NearbyEntities", "NearbyBlocks", "NearbyItemDrops", "Container", "ContainerType", "ContainerMask", "IsWalkable", });
     internal_static_minecraftai_Action_descriptor =
       getDescriptor().getMessageTypes().get(5);
     internal_static_minecraftai_Action_fieldAccessorTable = new

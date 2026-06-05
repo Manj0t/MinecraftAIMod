@@ -264,6 +264,44 @@ public class AgentObservation {
         return foundItems;
     }
 
+    private double isWalkable(World w, int x, int y, int z) {
+        BlockPos footPos = new BlockPos(x, y, z);
+        BlockPos headPos = new BlockPos(x, y + 1, z);
+
+        boolean footClear = !w.getBlockState(footPos).isSolidBlock(w, footPos);
+        boolean headClear = !w.getBlockState(headPos).isSolidBlock(w, headPos);
+
+        return (footClear && headClear) ? 1.0 : 0.0;
+    }
+
+    public double[] getDirectionLabels() {
+        float yawRad = (float) Math.toRadians(agent.getYaw());
+        int ax = agent.getBlockX();
+        int ay = agent.getBlockY();
+        int az = agent.getBlockZ();
+
+        // Forward/backward relative to yaw
+        int fx = ax + Math.round(-((float)Math.sin(yawRad)));
+        int fz = az + Math.round((float)Math.cos(yawRad));
+        int bx = ax + Math.round((float)Math.sin(yawRad));
+        int bz = az + Math.round(-((float)Math.cos(yawRad)));
+
+        // Left/right (perpendicular to yaw)
+        int lx = ax + Math.round((float)Math.cos(yawRad));
+        int lz = az + Math.round((float)Math.sin(yawRad));
+        int rx = ax + Math.round(-((float)Math.cos(yawRad)));
+        int rz = az + Math.round(-((float)Math.sin(yawRad)));
+
+        World w = agent.getEntityWorld();
+
+        return new double[] {
+                isWalkable(w, fx, ay, fz), // Forward
+                isWalkable(w, bx, ay, bz), // Backward
+                isWalkable(w, lx, ay, lz), // Left
+                isWalkable(w, rx, ay, rz)  // Right
+        };
+    }
+
     // ========= Send full state to Python =========
 
     public void sendStateInfo(MinecraftServer server, DataOutputStream output) {
@@ -272,6 +310,10 @@ public class AgentObservation {
         double[][] nearbyEntities = getNearbyEntities();
         double[][][] nearbyBlocks = getNearbyBlocks();
         double[][][][] nearbyItems = getNearbyItemDrops();
+        double[] walkableSpaces = getDirectionLabels();
+
+        List<Double> walkableSpacesList = new ArrayList<>(walkableSpaces.length);
+        for(double v : walkableSpaces) walkableSpacesList.add(v);
 
         // Agent info
         List<Double> agentInfoList = new ArrayList<>(agentInfo.length);
@@ -348,6 +390,7 @@ public class AgentObservation {
         // Build protobuf
         State stateInfo = State.newBuilder()
                 .addAllAgentInfo(agentInfoList)
+                .addAllIsWalkable(walkableSpacesList)
                 .setInventory(inventoryMatrix)
                 .setNearbyEntities(entitiesMatrix)
                 .setNearbyBlocks(blocksMatrix)

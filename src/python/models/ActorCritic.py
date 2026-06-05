@@ -1,36 +1,31 @@
 import torch
 from torch import nn
-from models.Embedders import ItemEmbedder, BlockEmbedder, EntityEmbedder
+from models.Embedders import BlockEmbedder
 from models.BlockEncoder import BlockEncoder
-from models.ItemDropsCNN import ItemDropsCNN
 from config import DEVICE, EMBEDDING_DIM
 
+
 class ActorCriticNetwork(nn.Module):
+    """
+    Phase 1: Navigation only.
+    Obs  = 8 agent‑info scalars + 256‑dim block encoder = 264
+    Heads = movement (5) + side_movement (3) + pan_camera (5)
+    """
+
+    # agent_info_dim should be 8 for phase 1
     def __init__(self, agent_info_dim, num_items, num_blocks, num_entities, num_envs, hidden_size=256):
         super().__init__()
 
-        self.item_embedder = ItemEmbedder(num_items)
         self.block_embedder = BlockEmbedder(num_blocks)
-        self.entity_embedder = EntityEmbedder(num_entities)
+        self.block_encoder = BlockEncoder(EMBEDDING_DIM)
 
         self.embed_dim = EMBEDDING_DIM
         self.hidden_size = hidden_size
 
-        #  * ( (5 * 2) + 1) * ( (3 * 2) + 1) * ( (5 * 2) + 1 )
-        # self.block_transformer = MinecraftTransformer(self.embed_dim)
-        self.block_encoder = BlockEncoder(self.embed_dim)
-        self.nearby_item_drops_cnn = ItemDropsCNN(self.embed_dim)
+        # 8 agent scalars + 256 block encoder
+        obs_space_size = 8 + 256 # using only 8 values from agent_info_dim for phase 1
 
-        obs_space_size = ((agent_info_dim + 1)
-                          + 41 * self.embed_dim     # inventory
-                          + 256                    # Nearby Blocks
-                          + 256                    # Nearby Item Drops
-                          + 10 * self.embed_dim     # Nearby Entities
-                          + self.embed_dim
-                          + 11)                      # +10 for prviouse actions
-        # obs_space_size = (agent_info_dim + 0) + 4096 + 4
-
-        # Pre-encoder: compress raw obs before GRU
+        # Pre-encoder
         self.pre_encoder = nn.Sequential(
             nn.Linear(obs_space_size, 512),
             nn.ReLU(),
@@ -38,10 +33,9 @@ class ActorCriticNetwork(nn.Module):
             nn.ReLU(),
         )
 
-        # GRU replaces the deep shared MLP
+        # but keeping it so the plumbing stays intact for later phases)
         self.gru = nn.GRU(input_size=hidden_size, hidden_size=hidden_size, batch_first=True)
 
-        # Post-GRU layer before heads
         self.post_gru = nn.Sequential(
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
@@ -51,190 +45,128 @@ class ActorCriticNetwork(nn.Module):
         self.num_envs = num_envs
         self.h_states = torch.zeros(num_envs, 1, hidden_size, device=DEVICE)
 
-        # Policy heads
-        self.inv_action_type = nn.Linear(hidden_size, 4)    # No inventory action 0, swap items 1, drop item 2, craft item 3
-        self.movement_policy = nn.Linear(hidden_size, 5)    # 0 forward, 1 backward, 2 forward jump, 3 jump, 4 none
-        self.move_side_policy = nn.Linear(hidden_size, 3)   # left, right, none
-        self.item_use_policy = nn.Linear(hidden_size, 3)    # Left click (attack)0 , right click (use item)1 , neither2
-        self.hotbar_policy = nn.Linear(hidden_size, 9)      # Active hotbar slot
-        self.pan_camera = nn.Linear(hidden_size, 5)         # Pan camera up 0, down 1, left 2, right 3
+        # == Policy heads (navigation only) ==
+        self.movement_policy = nn.Linear(hidden_size, 5)   # forward, backward, forward+jump, jump, none
+        self.move_side_policy = nn.Linear(hidden_size, 3)  # left, right, none
+        self.pan_camera = nn.Linear(hidden_size, 5)        # up, down, left, right, none
 
-        # self.swap_flag = nn.Linear(128, 1)          # 0 no swap, 1 swap. If 0 ignores from and to slot
-        self.from_slot = nn.Linear(hidden_size, 41)         # 41 possible slots to pick from
-        self.to_slot = nn.Linear(hidden_size, 41)           # 41 possible slots to pick from
-
-        # self.drop_flag = nn.Linear(128, 1)          # 0 no drop, 1 do drop. If 0 ignores drop_slot and drop_all
-        self.drop_slot = nn.Linear(hidden_size, 41)         # 41 possible slots to pick to drop
-        self.drop_all = nn.Linear(hidden_size, 1)           # 0 drop one, 1 drop all
-
-        # self.craft_flag = nn.Linear(128, 1)         # 0 no craft, 1 do craft. If 0 ignores craft_item_id
-        self.craft_item_id = nn.Linear(hidden_size, num_items)  # Many items to choose from to craft. Item crafting will hopefully be learned
-
+        # == Value head ==
         self.value_layer = nn.Sequential(
             nn.Linear(hidden_size, 128),
             nn.ReLU(),
             nn.Linear(128, 1),
         )
 
+    # ------------------------------------------------------------------ #
+    #  Observation preprocessing                                         #
+    # ------------------------------------------------------------------ #
 
+    # Indices into the full 31-value Java agent info array:
+    # [3] normYaw, [4] normPitch, [5] vx, [6] vy, [7] vz,
+    # [9] colliding, [14] onGround, [15] isFalling
+    NAV_INDICES = [3, 4, 5, 6, 7, 9, 14, 15]
     def obs_preprocessing(self, obs):
-        item_embedding = self.item_embedder(obs['Inventory'])
-        block_embedding = self.block_embedder(obs['Blocks'])
-        entity_embedding = self.entity_embedder(obs['Entities'])
-        agent_info = obs['AgentInfo']
-        prevActions = obs['PrevActions']
-        nearby_items = obs['NearbyItemDrops']
+        agent_info = obs['AgentInfo']                       # (B, 8) or (8,)
 
-        if len(agent_info.shape) == 1:
+        if agent_info.dim() == 1:
             agent_info = agent_info.unsqueeze(0)
-        if len(prevActions.shape) == 1:
-            prevActions = prevActions.unsqueeze(0)
 
-        look_slice = agent_info[:, -9:]
-        agent_info = agent_info[:, :-9]
+        # Slice out only the 8 nav-relevant values
+        agent_info = agent_info[:, self.NAV_INDICES]
 
-        look_type = look_slice[:, 0].long()
-        looking_at_info = look_slice[:, 1:].long()
+        block_embedding = self.block_embedder(obs['Blocks'])
+        if block_embedding.dim() == 3:
+            block_embedding = block_embedding.unsqueeze(0)  # (1, C, D, H, W)
 
-        look_embeds = torch.zeros(agent_info.size(0), self.embed_dim, device=DEVICE)
+        block_x = self.block_encoder(block_embedding)       # (B, 256)
 
-        block_mask = (look_type == 1)
-        entity_mask = (look_type == 2)
+        return torch.cat([agent_info, block_x], dim=-1)     # (B, 264)
 
-        if block_mask.any():
-            block_ids = looking_at_info[block_mask, 0]
-            look_embeds[block_mask] = self.block_embedder.block_embedding(block_ids)
-
-        if entity_mask.any():
-            look_embeds[entity_mask] = self.entity_embedder(looking_at_info[entity_mask])
-
-        if len(item_embedding.shape) == 2:
-            item_embedding = item_embedding.unsqueeze(0)
-        if len(block_embedding.shape) == 3:
-            block_embedding = block_embedding.unsqueeze(0)
-        if len(entity_embedding.shape) == 2:
-            entity_embedding = entity_embedding.unsqueeze(0)
-        if len(nearby_items.shape) == 4:
-            nearby_items = nearby_items.unsqueeze(0)
-
-        item_x = torch.flatten(item_embedding, start_dim=1)
-        block_x = self.block_encoder(block_embedding)
-        entity_x = torch.flatten(entity_embedding, start_dim=1)
-
-        nearby_item_drop_embedding = self.item_embedder(nearby_items)
-        nearby_item_drop_embedding = nearby_item_drop_embedding.permute(0, 4, 1, 2, 3)
-        item_drops_x = self.nearby_item_drops_cnn(nearby_item_drop_embedding)
-
-        return torch.cat([agent_info, item_x, block_x, entity_x, item_drops_x, look_embeds, prevActions], dim=-1)
-
-
+    # ------------------------------------------------------------------ #
+    #  Policy logits                                                     #
+    # ------------------------------------------------------------------ #
     def get_policy_logits(self, x: torch.Tensor):
-        inv_act_logits = self.inv_action_type(x)
-
-        movement_policy_logits = self.movement_policy(x)
-        side_movement_policy_logits = self.move_side_policy(x)
-        item_use_policy_logits = self.item_use_policy(x)
-        hotbar_policy_logits = self.hotbar_policy(x)
-        pan_camera_logits = self.pan_camera(x)
-
-        from_slot_logits = self.from_slot(x)
-        to_slot_logits = self.to_slot(x)
-
-        drop_slot_logits = self.drop_slot(x)
-        drop_all_flag_logits = self.drop_all(x)
-
-        craft_item_id_logits = self.craft_item_id(x)
-
-        policy_logits = {
-            'inv_act' : inv_act_logits,
-            'movement': movement_policy_logits,
-            'side_movement' : side_movement_policy_logits,
-            'item_use': item_use_policy_logits,
-            'hotbar': hotbar_policy_logits,
-            'pan_camera' : pan_camera_logits,
-            'from_slot': from_slot_logits,
-            'to_slot': to_slot_logits,
-            'drop_slot': drop_slot_logits,
-            'drop_all_flag': drop_all_flag_logits,
-            'craft_item_id': craft_item_id_logits
+        return {
+            'movement':      self.movement_policy(x),
+            'side_movement': self.move_side_policy(x),
+            'pan_camera':    self.pan_camera(x),
         }
 
-        return policy_logits
-
+    # ------------------------------------------------------------------ #
+    #  Forward passes                                                    #
+    # ------------------------------------------------------------------ #
     def value(self, obs, num_envs=1):
-        _, value = self.forward(obs, num_envs)
-        return value
-
+        _, v = self.forward(obs, num_envs)
+        return v
 
     def policy(self, obs, num_envs=1):
-        policy_logits, _ = self.forward(obs, num_envs)
-        return policy_logits
-
+        p, _ = self.forward(obs, num_envs)
+        return p
 
     def forward(self, obs, num_envs=1):
         n_obs = self.obs_preprocessing(obs)
-        if torch.isnan(n_obs).any() or torch.isinf(n_obs).any():
-            print(" NaN or Inf detected in observation BEFORE network")
 
         x = self.pre_encoder(n_obs)
 
-        # GRU step
-        h_prev = self.h_states[0:num_envs].detach()
-
+        h_prev = self.h_states[:num_envs].detach()
         gru_out, h_new = self.gru(x.unsqueeze(1), h_prev.transpose(0, 1))
-        self.h_states[0:num_envs] = h_new.transpose(0, 1)
+        self.h_states[:num_envs] = h_new.transpose(0, 1)
 
-        x = gru_out.squeeze(1)
-        x = self.post_gru(x)
-
-        policy_logits = self.get_policy_logits(x)
-        value = self.value_layer(x)
-
-        return policy_logits, value
-
-    def forward_train(self, obs, h_prev):
-        """For PPO updates — uses stored hidden states from rollout."""
-        n_obs = self.obs_preprocessing(obs)
-        x = self.pre_encoder(n_obs)
-
-        # h_prev shape: [batch, 1, hidden_size] -> [1, batch, hidden_size]
-        gru_out, _ = self.gru(x.unsqueeze(1), h_prev.transpose(0, 1))
         x = gru_out.squeeze(1)
         x = self.post_gru(x)
 
         return self.get_policy_logits(x), self.value_layer(x)
 
+    def forward_train(self, obs):
+        """
+        Used strictly during PPO training - processes a sequence window block.
+        Expects:
+          - obs['Blocks']: [num_envs, window_size, ...]
+          - obs['AgentInfo']: [num_envs, window_size, 31]
+          - h_prev_window: [1, num_envs, hidden_size] (Hidden state starting this chunk)
+        """
+        num_envs = obs['Blocks'].shape[0]
+        window_size = obs['Blocks'].shape[1]
+
+        # 1. Temporarily flatten Env and Time dimensions to pass through 2D block encoders
+        flat_obs = {
+            'Blocks': obs['Blocks'].reshape(-1, *obs['Blocks'].shape[2:]),
+            'AgentInfo': obs['AgentInfo'].reshape(-1, *obs['AgentInfo'].shape[2:])
+        }
+
+        n_obs = self.obs_preprocessing(flat_obs) # Shape: [num_envs * window_size, 264]
+        x = self.pre_encoder(n_obs)              # Shape: [num_envs * window_size, hidden_size]
+
+        # 2. Reshape into explicit 3D sequence format for the GRU
+        # Shape: [num_envs, window_size, hidden_size]
+        x_sequence = x.view(num_envs, window_size, self.hidden_size)
+
+        # 3. Process the entire sequence chunk window through the GRU at once
+        # GRU input: [Batch=num_envs, Seq=window_size, Features=hidden_size]
+        # h_next captures the updated state to pass to the next window chunk
+        h_prev = self.h_states[:num_envs].detach()
+
+        gru_out, h_next = self.gru(x_sequence, h_prev.transpose(0, 1))
+
+        self.h_states = h_next.transpose(0, 1).detach()
+
+        # 4. Flatten back to 2D to calculate policy head choices
+        x_flat = gru_out.reshape(-1, self.hidden_size)
+        x_out = self.post_gru(x_flat)
+
+        logits = self.get_policy_logits(x_out)
+        values = self.value_layer(x_out)
+
+        # 5. Reshape outputs back into 2D grid blocks to match your PPO buffer format
+        logits_reshaped = {
+            'movement':      logits['movement'].view(num_envs, window_size, -1),
+            'side_movement': logits['side_movement'].view(num_envs, window_size, -1),
+            'pan_camera':    logits['pan_camera'].view(num_envs, window_size, -1)
+        }
+        values_reshaped = values.view(num_envs, window_size)
+
+        return logits_reshaped, values_reshaped
+
+
     def reset_h_states(self):
         self.h_states = torch.zeros(self.num_envs, 1, self.hidden_size, device=DEVICE)
-
-    def debug_tensor(self, name, t):
-        if torch.isnan(t).any() or torch.isinf(t).any():
-            print(f" NaN or Inf detected in {name}")
-            print("   min:", torch.nanmin(t))
-            print("   max:", torch.nanmax(t))
-            print("   values:", t)
-            raise ValueError(f"Invalid values in {name}")
-
-
-
-
-# nn.Sequential(
-#             # Gradual compression instead of brutal 15x drop
-#             nn.Linear(obs_space_size, 2048),  # ← ADD THIS (only 7.5x compression)
-#             nn.ReLU(),
-#             nn.Dropout(0.1),
-#
-#             nn.Linear(2048, 1024),  # ← Now only 2x compression
-#             nn.ReLU(),
-#             nn.Dropout(0.1),
-#
-#             nn.Linear(1024, 512),
-#             nn.ReLU(),
-#             nn.Dropout(0.1),
-#
-#             nn.Linear(512, 512),
-#             nn.ReLU(),
-#
-#             nn.Linear(512, 256),
-#             nn.ReLU(),
-#         )

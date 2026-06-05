@@ -30,6 +30,7 @@ message State {
   Matrix container = 6;
   double containerType = 7;
   repeated double containerMask = 8;
+  repeated double isWalkable = 9;
 }
 
 message Action {

@@ -121,4 +121,21 @@ public interface StateOrBuilder extends
    * @return The containerMask at the given index.
    */
   double getContainerMask(int index);
+
+  /**
+   * <code>repeated double isWalkable = 9;</code>
+   * @return A list containing the isWalkable.
+   */
+  java.util.List<java.lang.Double> getIsWalkableList();
+  /**
+   * <code>repeated double isWalkable = 9;</code>
+   * @return The count of isWalkable.
+   */
+  int getIsWalkableCount();
+  /**
+   * <code>repeated double isWalkable = 9;</code>
+   * @param index The index of the element to return.
+   * @return The isWalkable at the given index.
+   */
+  double getIsWalkable(int index);
 }

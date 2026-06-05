@@ -31,4 +31,4 @@ def compute_gaes(rewards, values, dones, num_envs, gamma=0.99, lam=0.95):
             advantages[t, e] = gae
         returns[:, e] = advantages[:, e] + values[:, e]
 
-    return advantages, returns
+    return advantages.T, returns.T

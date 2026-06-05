@@ -52,14 +52,14 @@ public class AgentActions {
     // ========= Movement =========
 
     public void moveForward() {
-        Vec3d lookDir = agent.getRotationVec(1.0F);
-        agent.addVelocity(new Vec3d(lookDir.x * speed, 0, lookDir.z * speed));
+        float yawRad = (float) Math.toRadians(agent.getYaw());
+        agent.addVelocity(new Vec3d(-Math.sin(yawRad) * speed, 0, Math.cos(yawRad) * speed));
         clipVelocity();
     }
 
     public void moveBackward() {
-        Vec3d lookDir = agent.getRotationVec(1.0F);
-        agent.addVelocity(new Vec3d(lookDir.x * -speed, 0, lookDir.z * -speed));
+        float yawRad = (float) Math.toRadians(agent.getYaw());
+        agent.addVelocity(new Vec3d(Math.sin(yawRad) * speed, 0, -Math.cos(yawRad) * speed));
         clipVelocity();
     }
 

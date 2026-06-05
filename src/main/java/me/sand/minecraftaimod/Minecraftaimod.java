@@ -4,6 +4,7 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import me.sand.minecraftaimod.agent.*;
 import me.sand.minecraftaimod.agent.ContainerType;
+import me.sand.minecraftaimod.agent.MazeGenerator;
 import me.sand.minecraftaimod.network.CraftPagesPayload;
 import me.sand.minecraftaimod.network.CraftOption;
 import me.sand.minecraftaimod.network.InteractionPayload;
@@ -22,6 +23,7 @@ import net.minecraft.recipe.RecipeEntry;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.math.BlockPos;
@@ -68,7 +70,7 @@ public class Minecraftaimod implements ModInitializer {
     private float penalty = 0;
 
     // ========= Data collection mode =========
-    private boolean dataCollection = false;
+    private boolean dataCollection = true;
     private boolean tableNearbyLastRecipeSend = false;
 
     // ========= Inventory action flags (set by network receivers) =========
@@ -95,6 +97,21 @@ public class Minecraftaimod implements ModInitializer {
     private ServerPlayerEntity blockCollectPlayer = null;
 
     public static ServerCommandSource cmdSrc = null;
+
+    // ========= Maze =========
+    private MazeGenerator currentMaze = null;
+    private BlockPos mazeOrigin = new BlockPos(0, 64, 0); // fixed origin
+    private int rolloutsSinceNewMaze = 0;
+    private static final int ROLLOUTS_PER_MAZE = 1;
+    private int mazeWidth = 5;   // add these
+    private int mazeLength = 5;
+    private boolean lavaEnabled = false;
+
+    // ========= Frame Skip =========
+    private int actionRepeatCounter = 0;
+    private static final int ACTION_REPEAT = 4;
+    private List<Float> lastActionList = null;
+    private float accumulatedReward = 0;
 
     @Override
     public void onInitialize() {
@@ -230,6 +247,56 @@ public class Minecraftaimod implements ModInitializer {
                 ctx.getSource().sendFeedback(() -> Text.literal("Saved " + size + " block grids!"), false);
                 return 1;
             }));
+
+            dispatcher.register(literal("generate_maze")
+                    .then(argument("width", IntegerArgumentType.integer(3, 20))
+                            .then(argument("length", IntegerArgumentType.integer(3, 20))
+                                    .executes(ctx -> {
+                                        ServerPlayerEntity player = ctx.getSource().getPlayer();
+                                        ServerWorld world = ctx.getSource().getWorld();
+                                        int w = IntegerArgumentType.getInteger(ctx, "width");
+                                        int l = IntegerArgumentType.getInteger(ctx, "length");
+
+                                        MazeGenerator maze = new MazeGenerator(w, l, 3, world);
+                                        maze.generate(world, player.getBlockPos());
+
+                                        player.requestTeleport(
+                                                maze.startPos.getX() + 0.5,
+                                                maze.startPos.getY(),
+                                                maze.startPos.getZ() + 0.5
+                                        );
+                                        player.setYaw(0);
+                                        player.setPitch(0);
+
+                                        ctx.getSource().sendFeedback(
+                                                () -> Text.literal("Generated " + w + "x" + l + " maze!"), false);
+                                        return 1;
+                                    }))));
+
+            dispatcher.register(literal("maze_size")
+                    .then(argument("width", IntegerArgumentType.integer(3, 20))
+                            .then(argument("length", IntegerArgumentType.integer(3, 20))
+                                    .executes(ctx -> {
+                                        mazeWidth = IntegerArgumentType.getInteger(ctx, "width");
+                                        mazeLength = IntegerArgumentType.getInteger(ctx, "length");
+                                        rolloutsSinceNewMaze = ROLLOUTS_PER_MAZE;
+                                        ctx.getSource().sendFeedback(
+                                                () -> Text.literal("Maze size → " + mazeWidth + "x" + mazeLength
+                                                        + " (next rollout)"), false);
+                                        return 1;
+                                    }))));
+
+            dispatcher.register(literal("maze_lava")
+                    .executes(ctx -> {
+                        lavaEnabled = !lavaEnabled;
+                        rolloutsSinceNewMaze = ROLLOUTS_PER_MAZE; // force new maze
+                        boolean enabled = lavaEnabled;
+                        ctx.getSource().sendFeedback(
+                                () -> Text.literal("Lava hazards: " + (enabled ? "ON" : "OFF")
+                                        + " (next rollout)"), false);
+                        return 1;
+                    }));
+
         });
     }
 
@@ -240,9 +307,9 @@ public class Minecraftaimod implements ModInitializer {
     private int startTraining(ServerCommandSource source, String name, int port) {
         cmdSrc = source;
         MinecraftServer server = source.getServer();
+        agentName = name.toLowerCase();
 
         if (!dataCollection) {
-            agentName = name.toLowerCase();
             server.getCommandManager().parseAndExecute(server.getCommandSource(), "/player " + agentName + " spawn");
         }
 
@@ -267,7 +334,7 @@ public class Minecraftaimod implements ModInitializer {
             if (dataCollection) {
                 sendState = true;
             } else {
-                output.writeInt(21); // agent_info_dim
+                output.writeInt(31); // agent_info_dim (health,hunger,sat,yaw,pitch,vx,vy,vz,blockBelow,collide,sneak,fire,water,lava,ground,falling,hurt,handCount,handSlot,time,light,breakProg,lookingAt,raycast[8])
                 output.writeInt(Registries.ITEM.size());
                 output.writeInt(Registries.BLOCK.size());
                 output.writeInt(Registries.ENTITY_TYPE.size());
@@ -310,12 +377,20 @@ public class Minecraftaimod implements ModInitializer {
         observation = new AgentObservation(agent, world, inventory, actions);
         crafting = new AgentCrafting(agent, world);
         rewards = new RewardCalculator(agent);
+        if (currentMaze != null && currentMaze.endPos != null) {
+            rewards.setGoal(new net.minecraft.util.math.Vec3d(
+                    currentMaze.endPos.getX() + 0.5,
+                    currentMaze.endPos.getY(),
+                    currentMaze.endPos.getZ() + 0.5));
+        }
     }
 
     private void resetAgentState() {
         if (rewards != null) rewards.reset();
+        actionRepeatCounter = 0;
+        accumulatedReward = 0;
+        lastActionList = null;
     }
-
     // ================================================
     //  Main tick loop
     // ================================================
@@ -364,6 +439,15 @@ public class Minecraftaimod implements ModInitializer {
                 penalty = -10.0f;
                 server.getCommandManager().parseAndExecute(server.getCommandSource(), "/player " + agentName + " spawn");
                 agent = null;
+                return;
+            }
+
+            if (actionRepeatCounter > 0) {
+                if (lastActionList != null) {
+                    actions.applyAction(lastActionList, inventory, crafting, observation.isTableNearby());
+                    accumulatedReward += (float) rewards.getReward(lastActionList);
+                }
+                actionRepeatCounter--;
                 return;
             }
 
@@ -416,7 +500,19 @@ public class Minecraftaimod implements ModInitializer {
                 world = agent.getEntityWorld();
                 initAgentHelpers();
                 resetAgentState();
-                server.getCommandManager().parseAndExecute(server.getCommandSource(), "/gamemode survival " + agentName);
+                server.getCommandManager().parseAndExecute(server.getCommandSource(),
+                        "/gamemode survival " + agentName);
+
+                // Teleport to maze start
+                if (currentMaze != null) {
+                    agent.requestTeleport(
+                            currentMaze.startPos.getX() + 0.5,
+                            currentMaze.startPos.getY(),
+                            currentMaze.startPos.getZ() + 0.5
+                    );
+                    agent.setYaw(0);
+                    agent.setPitch(0);
+                }
                 break;
             }
         }
@@ -427,7 +523,29 @@ public class Minecraftaimod implements ModInitializer {
             int startRollout = input.readInt();
             spawnPlayer = true;
             server.getCommandManager().parseAndExecute(server.getCommandSource(), "/time set day");
+
+            // Regenerate maze only every ROLLOUTS_PER_MAZE rollouts so the policy
+            // has time to learn the current layout before facing a new one
+            ServerWorld serverWorld = server.getOverworld();
+            rolloutsSinceNewMaze++;
+            if (currentMaze == null || rolloutsSinceNewMaze >= ROLLOUTS_PER_MAZE) {
+                currentMaze = new MazeGenerator(mazeWidth, mazeLength, 3, serverWorld);
+                currentMaze.lavaEnabled = lavaEnabled;
+                currentMaze.generate(serverWorld, mazeOrigin);
+                rolloutsSinceNewMaze = 0;
+                System.out.println("[Maze] New maze generated");
+            } else {
+                System.out.println("[Maze] Reusing maze (" + rolloutsSinceNewMaze + "/" + ROLLOUTS_PER_MAZE + ")");
+            }
+
+            server.getCommandManager().parseAndExecute(server.getCommandSource(), "/kill @e[type=!player]");
             resetAgentState();
+            if (rewards != null && currentMaze.endPos != null) {
+                rewards.setGoal(new net.minecraft.util.math.Vec3d(
+                        currentMaze.endPos.getX() + 0.5,
+                        currentMaze.endPos.getY(),
+                        currentMaze.endPos.getZ() + 0.5));
+            }
             if (startRollout > 0) {
                 waitForNextRollout = false;
                 sendState = true;
@@ -462,6 +580,9 @@ public class Minecraftaimod implements ModInitializer {
             List<Float> actionList = action.getActionsList();
 
             actions.applyAction(actionList, inventory, crafting, observation.isTableNearby());
+            lastActionList = actionList;
+            actionRepeatCounter = ACTION_REPEAT - 1; // -1 because this tick already applied it
+            accumulatedReward = 0;
             receiveAction = false;
             sendReward = true;
             return actionList;
@@ -472,9 +593,23 @@ public class Minecraftaimod implements ModInitializer {
 
     private void handleSendReward(MinecraftServer server, List<Float> actionList) {
         try {
-            float reward = (float) rewards.getReward(actionList) + penalty;
+            float reward = (float) rewards.getReward(actionList) + accumulatedReward + penalty;
+            accumulatedReward = 0;
             int doneTag = penalty == -10.0f ? 1 : 0;
             penalty = 0;
+
+            // Check if agent reached the maze exit — reward once per episode via claimGoalReached()
+            if (currentMaze != null && agent != null && doneTag == 0) {
+                BlockPos agentBlock = agent.getBlockPos();
+                BlockPos goal = currentMaze.endPos;
+                if (agentBlock.getX() == goal.getX() && agentBlock.getZ() == goal.getZ()
+                        && rewards.claimGoalReached()) {
+                    reward += 50.0f;
+                    doneTag = 1;
+                    // Do not set resetPlayer: the rollout protocol must continue uninterrupted.
+                    // GAE uses doneTag=1 as an episode boundary without ending the rollout.
+                }
+            }
 
             output.writeFloat(reward);
             output.writeInt(doneTag);

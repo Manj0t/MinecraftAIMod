@@ -13,6 +13,8 @@ public class RewardCalculator {
 
     private Vec3d lastPos = null;
     private double agentPrevHealth = 0;
+    private Vec3d goalPos = null;
+    private boolean goalReached = false;
 
     private final int REGION = 1;
     private final Set<RegionKey> visitedRegions = new HashSet<>();
@@ -23,10 +25,21 @@ public class RewardCalculator {
         this.agent = agent;
     }
 
+    public void setGoal(Vec3d goal) {
+        this.goalPos = goal;
+    }
+
+    public boolean claimGoalReached() {
+        if (goalReached) return false;
+        goalReached = true;
+        return true;
+    }
+
     public void reset() {
         lastPos = null;
         agentPrevHealth = 0;
         visitedRegions.clear();
+        goalReached = false;
     }
 
     public double getReward(List<Float> actions) {
@@ -39,18 +52,8 @@ public class RewardCalculator {
                 return 0.0;
             }
 
-            double reward = 0.0;
+            double reward = -0.01;
 
-            // Movement reward
-            double dx = currentPos.x - lastPos.x;
-            double dz = currentPos.z - lastPos.z;
-            double dist = Math.sqrt(dx * dx + dz * dz);
-
-            if (dist > 0.05) {
-                reward += dist * 0.5;
-            }
-
-            // New area discovery
             int regionX = (int) Math.floor(currentPos.x / REGION);
             int regionZ = (int) Math.floor(currentPos.z / REGION);
             RegionKey currentRegion = new RegionKey(regionX, regionZ);
@@ -60,37 +63,8 @@ public class RewardCalculator {
                 reward += 2.0;
             }
 
-            // Penalty for standing still
-            if (dist < 0.05) {
-                reward -= 0.1;
-            }
-
-            // Penalty for collision while trying to move
-            boolean isTryingToMove = actions.get(1) <= 4;
-            if (agent.horizontalCollision && isTryingToMove) {
-                reward -= 0.5;
-            }
-
-            // Penalty for unnecessary jumping
-            boolean jumped = (actions.get(1) == 2 || actions.get(1) == 3);
-            if (jumped) {
-                reward -= 0.1;
-            }
-
-            // Penalty for being in air
-            if (!agent.isOnGround() && !agent.isInLava()) {
-                reward -= 0.05;
-            }
-
-            // Big penalties for danger
             if (agent.isInLava() || agent.isOnFire()) {
                 reward -= 5.0;
-            }
-
-            // Damage penalty
-            if (agent.getHealth() < agentPrevHealth) {
-                double damage = agentPrevHealth - agent.getHealth();
-                reward -= damage * 2.0;
             }
 
             lastPos = currentPos;

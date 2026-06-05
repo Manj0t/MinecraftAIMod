@@ -18,6 +18,7 @@ private static final long serialVersionUID = 0L;
   private State() {
     agentInfo_ = emptyDoubleList();
     containerMask_ = emptyDoubleList();
+    isWalkable_ = emptyDoubleList();
   }
 
   @java.lang.Override
@@ -244,6 +245,35 @@ private static final long serialVersionUID = 0L;
   }
   private int containerMaskMemoizedSerializedSize = -1;
 
+  public static final int ISWALKABLE_FIELD_NUMBER = 9;
+  @SuppressWarnings("serial")
+  private com.google.protobuf.Internal.DoubleList isWalkable_;
+  /**
+   * <code>repeated double isWalkable = 9;</code>
+   * @return A list containing the isWalkable.
+   */
+  @java.lang.Override
+  public java.util.List<java.lang.Double>
+      getIsWalkableList() {
+    return isWalkable_;
+  }
+  /**
+   * <code>repeated double isWalkable = 9;</code>
+   * @return The count of isWalkable.
+   */
+  public int getIsWalkableCount() {
+    return isWalkable_.size();
+  }
+  /**
+   * <code>repeated double isWalkable = 9;</code>
+   * @param index The index of the element to return.
+   * @return The isWalkable at the given index.
+   */
+  public double getIsWalkable(int index) {
+    return isWalkable_.getDouble(index);
+  }
+  private int isWalkableMemoizedSerializedSize = -1;
+
   private byte memoizedIsInitialized = -1;
   @java.lang.Override
   public final boolean isInitialized() {
@@ -290,6 +320,13 @@ private static final long serialVersionUID = 0L;
     }
     for (int i = 0; i < containerMask_.size(); i++) {
       output.writeDoubleNoTag(containerMask_.getDouble(i));
+    }
+    if (getIsWalkableList().size() > 0) {
+      output.writeUInt32NoTag(74);
+      output.writeUInt32NoTag(isWalkableMemoizedSerializedSize);
+    }
+    for (int i = 0; i < isWalkable_.size(); i++) {
+      output.writeDoubleNoTag(isWalkable_.getDouble(i));
     }
     getUnknownFields().writeTo(output);
   }
@@ -346,6 +383,17 @@ private static final long serialVersionUID = 0L;
       }
       containerMaskMemoizedSerializedSize = dataSize;
     }
+    {
+      int dataSize = 0;
+      dataSize = 8 * getIsWalkableList().size();
+      size += dataSize;
+      if (!getIsWalkableList().isEmpty()) {
+        size += 1;
+        size += com.google.protobuf.CodedOutputStream
+            .computeInt32SizeNoTag(dataSize);
+      }
+      isWalkableMemoizedSerializedSize = dataSize;
+    }
     size += getUnknownFields().getSerializedSize();
     memoizedSize = size;
     return size;
@@ -393,6 +441,8 @@ private static final long serialVersionUID = 0L;
             other.getContainerType())) return false;
     if (!getContainerMaskList()
         .equals(other.getContainerMaskList())) return false;
+    if (!getIsWalkableList()
+        .equals(other.getIsWalkableList())) return false;
     if (!getUnknownFields().equals(other.getUnknownFields())) return false;
     return true;
   }
@@ -434,6 +484,10 @@ private static final long serialVersionUID = 0L;
     if (getContainerMaskCount() > 0) {
       hash = (37 * hash) + CONTAINERMASK_FIELD_NUMBER;
       hash = (53 * hash) + getContainerMaskList().hashCode();
+    }
+    if (getIsWalkableCount() > 0) {
+      hash = (37 * hash) + ISWALKABLE_FIELD_NUMBER;
+      hash = (53 * hash) + getIsWalkableList().hashCode();
     }
     hash = (29 * hash) + getUnknownFields().hashCode();
     memoizedHashCode = hash;
@@ -592,6 +646,7 @@ private static final long serialVersionUID = 0L;
       }
       containerType_ = 0D;
       containerMask_ = emptyDoubleList();
+      isWalkable_ = emptyDoubleList();
       return this;
     }
 
@@ -635,6 +690,11 @@ private static final long serialVersionUID = 0L;
         bitField0_ = (bitField0_ & ~0x00000080);
       }
       result.containerMask_ = containerMask_;
+      if (((bitField0_ & 0x00000100) != 0)) {
+        isWalkable_.makeImmutable();
+        bitField0_ = (bitField0_ & ~0x00000100);
+      }
+      result.isWalkable_ = isWalkable_;
     }
 
     private void buildPartial0(me.sand.minecraftaimod.protobuf.State result) {
@@ -751,6 +811,16 @@ private static final long serialVersionUID = 0L;
         }
         onChanged();
       }
+      if (!other.isWalkable_.isEmpty()) {
+        if (isWalkable_.isEmpty()) {
+          isWalkable_ = other.isWalkable_;
+          bitField0_ = (bitField0_ & ~0x00000100);
+        } else {
+          ensureIsWalkableIsMutable();
+          isWalkable_.addAll(other.isWalkable_);
+        }
+        onChanged();
+      }
       this.mergeUnknownFields(other.getUnknownFields());
       onChanged();
       return this;
@@ -849,6 +919,22 @@ private static final long serialVersionUID = 0L;
               input.popLimit(limit);
               break;
             } // case 66
+            case 73: {
+              double v = input.readDouble();
+              ensureIsWalkableIsMutable();
+              isWalkable_.addDouble(v);
+              break;
+            } // case 73
+            case 74: {
+              int length = input.readRawVarint32();
+              int limit = input.pushLimit(length);
+              ensureIsWalkableIsMutable();
+              while (input.getBytesUntilLimit() > 0) {
+                isWalkable_.addDouble(input.readDouble());
+              }
+              input.popLimit(limit);
+              break;
+            } // case 74
             default: {
               if (!super.parseUnknownField(input, extensionRegistry, tag)) {
                 done = true; // was an endgroup tag
@@ -1651,6 +1737,87 @@ private static final long serialVersionUID = 0L;
     public Builder clearContainerMask() {
       containerMask_ = emptyDoubleList();
       bitField0_ = (bitField0_ & ~0x00000080);
+      onChanged();
+      return this;
+    }
+
+    private com.google.protobuf.Internal.DoubleList isWalkable_ = emptyDoubleList();
+    private void ensureIsWalkableIsMutable() {
+      if (!((bitField0_ & 0x00000100) != 0)) {
+        isWalkable_ = mutableCopy(isWalkable_);
+        bitField0_ |= 0x00000100;
+      }
+    }
+    /**
+     * <code>repeated double isWalkable = 9;</code>
+     * @return A list containing the isWalkable.
+     */
+    public java.util.List<java.lang.Double>
+        getIsWalkableList() {
+      return ((bitField0_ & 0x00000100) != 0) ?
+               java.util.Collections.unmodifiableList(isWalkable_) : isWalkable_;
+    }
+    /**
+     * <code>repeated double isWalkable = 9;</code>
+     * @return The count of isWalkable.
+     */
+    public int getIsWalkableCount() {
+      return isWalkable_.size();
+    }
+    /**
+     * <code>repeated double isWalkable = 9;</code>
+     * @param index The index of the element to return.
+     * @return The isWalkable at the given index.
+     */
+    public double getIsWalkable(int index) {
+      return isWalkable_.getDouble(index);
+    }
+    /**
+     * <code>repeated double isWalkable = 9;</code>
+     * @param index The index to set the value at.
+     * @param value The isWalkable to set.
+     * @return This builder for chaining.
+     */
+    public Builder setIsWalkable(
+        int index, double value) {
+      
+      ensureIsWalkableIsMutable();
+      isWalkable_.setDouble(index, value);
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>repeated double isWalkable = 9;</code>
+     * @param value The isWalkable to add.
+     * @return This builder for chaining.
+     */
+    public Builder addIsWalkable(double value) {
+      
+      ensureIsWalkableIsMutable();
+      isWalkable_.addDouble(value);
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>repeated double isWalkable = 9;</code>
+     * @param values The isWalkable to add.
+     * @return This builder for chaining.
+     */
+    public Builder addAllIsWalkable(
+        java.lang.Iterable<? extends java.lang.Double> values) {
+      ensureIsWalkableIsMutable();
+      com.google.protobuf.AbstractMessageLite.Builder.addAll(
+          values, isWalkable_);
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>repeated double isWalkable = 9;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearIsWalkable() {
+      isWalkable_ = emptyDoubleList();
+      bitField0_ = (bitField0_ & ~0x00000100);
       onChanged();
       return this;
     }
